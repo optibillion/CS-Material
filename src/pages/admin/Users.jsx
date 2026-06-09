@@ -52,7 +52,7 @@ function Modal({ open, onClose, onSave }) {
             </div>
             <div>
               <label className="text-[#9ca3af] text-sm mb-1.5 block">Password *</label>
-              <input type="text" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Set password"
+              <input type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Set password"
                 className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
             </div>
           </div>
@@ -83,7 +83,7 @@ function ResetModal({ open, onClose, onSave, user }) {
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
         <h2 className="text-white font-semibold text-lg mb-2">Reset Password</h2>
         <p className="text-[#9ca3af] text-sm mb-4">For <span className="text-white">{user?.name}</span></p>
-        <input type="text" value={password} onChange={e => setPassword(e.target.value)} placeholder="New password"
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="New password"
           className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
         <div className="flex gap-3 mt-5">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search } from 'lucide-react'
+import { Plus, Search, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 
-function Modal({ open, onClose, onSave }) {
+function Modal({ open, onClose, onSave, initial }) {
   const [name, setName] = useState('')
-  useEffect(() => { if (open) setName('') }, [open])
+  const isEdit = !!initial
+  useEffect(() => { if (open) setName(initial?.name || '') }, [open, initial])
   async function handleSave() {
     if (!name.trim()) { toast.error('Batch name required'); return }
     await onSave(name.trim()); onClose()
@@ -15,7 +16,7 @@ function Modal({ open, onClose, onSave }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
-        <h2 className="text-white font-semibold text-lg mb-5">Add New Batch</h2>
+        <h2 className="text-white font-semibold text-lg mb-5">{isEdit ? 'Rename Batch' : 'Add New Batch'}</h2>
         <div>
           <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch Name *</label>
           <input value={name} onChange={e => setName(e.target.value)}
@@ -24,7 +25,9 @@ function Modal({ open, onClose, onSave }) {
         </div>
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Add Batch</button>
+          <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">
+            {isEdit ? 'Save' : 'Add Batch'}
+          </button>
         </div>
       </div>
     </div>
@@ -36,6 +39,7 @@ export default function Batches() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -50,6 +54,15 @@ export default function Batches() {
     if (error) { toast.error('Failed to add batch'); return }
     toast.success('Batch added')
     logAction('BATCH_CREATED', name)
+    fetchAll()
+  }
+
+  async function handleEdit(name) {
+    const { error } = await supabase.from('batches').update({ name }).eq('id', editing.id)
+    if (error) { toast.error('Failed to update batch'); return }
+    toast.success('Batch renamed')
+    logAction('BATCH_UPDATED', `${editing.name} → ${name}`)
+    setEditing(null)
     fetchAll()
   }
 
@@ -107,17 +120,24 @@ export default function Batches() {
                   </span>
                 </td>
                 <td className="px-5 py-3">
-                  <button onClick={() => toggleActive(b)}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
-                    {b.is_active ? 'Deactivate' : 'Activate'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setEditing(b)}
+                      className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
+                      <Pencil size={11} /> Rename
+                    </button>
+                    <button onClick={() => toggleActive(b)}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
+                      {b.is_active ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} />
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={null} />
+      <Modal open={!!editing} onClose={() => setEditing(null)} onSave={handleEdit} initial={editing} />
     </div>
   )
 }

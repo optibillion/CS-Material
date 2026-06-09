@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, BookOpen, Eye, EyeOff } from 'lucide-react'
+import { Plus, Search, BookOpen, Eye, EyeOff, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 
 const CATEGORIES = ['booklet', 'notes', 'test_series', 'paper_set']
-const MEDIUMS = ['hindi', 'english']
+const MEDIUMS = ['hindi', 'english', 'both']
 
 function Badge({ label }) {
   const colors = {
@@ -24,7 +24,7 @@ function Badge({ label }) {
   )
 }
 
-function Modal({ open, onClose, onSave, initial }) {
+function BookModal({ open, onClose, onSave, initial }) {
   const [form, setForm] = useState({ title: '', subject: '', medium: 'hindi', category: 'booklet', exam_level: '', unit: '', part: '' })
   useEffect(() => {
     if (initial) setForm(initial)
@@ -60,12 +60,12 @@ function Modal({ open, onClose, onSave, initial }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[#9ca3af] text-sm mb-1.5 block">Unit</label>
-              <input value={form.unit || ''} onChange={e => set('unit', e.target.value)} placeholder="e.g. History, Polity"
+              <input value={form.unit || ''} onChange={e => set('unit', e.target.value)} placeholder="e.g. Paper 1 Part-A"
                 className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
             </div>
             <div>
               <label className="text-[#9ca3af] text-sm mb-1.5 block">Part <span className="text-[#6b7280] text-xs">(optional)</span></label>
-              <input value={form.part || ''} onChange={e => set('part', e.target.value)} placeholder="e.g. Part 1"
+              <input value={form.part || ''} onChange={e => set('part', e.target.value)} placeholder="e.g. Unit-1"
                 className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
             </div>
           </div>
@@ -95,6 +95,44 @@ function Modal({ open, onClose, onSave, initial }) {
   )
 }
 
+function BundlePromptModal({ open, onClose, onConfirm, bundles, bookTitle }) {
+  const [selected, setSelected] = useState([])
+  useEffect(() => { if (open) setSelected((bundles || []).map(b => b.id)) }, [open, bundles])
+  function toggle(id) { setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]) }
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Package size={18} className="text-[#f0a500]" />
+          <h2 className="text-white font-semibold text-lg">Add to Bundle?</h2>
+        </div>
+        <p className="text-[#6b7280] text-sm mb-4">
+          "<span className="text-white">{bookTitle}</span>" matches {bundles?.length} bundle(s) with the same unit. Add it to:
+        </p>
+        <div className="space-y-2 mb-5">
+          {(bundles || []).map(b => (
+            <label key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer border transition-all ${selected.includes(b.id) ? 'bg-[#f0a500]/10 border-[#f0a500]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
+              <input type="checkbox" checked={selected.includes(b.id)} onChange={() => toggle(b.id)} className="accent-[#f0a500]" />
+              <div className="flex items-center gap-2">
+                <Package size={13} className="text-[#f0a500]" />
+                <span className="text-white text-sm">{b.name}</span>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Skip</button>
+          <button onClick={() => selected.length > 0 && onConfirm(selected)} disabled={selected.length === 0}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] disabled:opacity-50 text-black font-semibold text-sm transition-all">
+            Add to {selected.length} Bundle{selected.length !== 1 ? 's' : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Books() {
   const [books, setBooks] = useState([])
   const [issuanceCounts, setIssuanceCounts] = useState({})
@@ -105,6 +143,7 @@ export default function Books() {
   const [filterUnit, setFilterUnit] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [bundlePrompt, setBundlePrompt] = useState(null)
 
   useEffect(() => { fetchBooks() }, [])
 
@@ -127,13 +166,50 @@ export default function Books() {
       if (error) { toast.error('Failed to update'); return }
       toast.success('Book updated')
       logAction('BOOK_UPDATED', `${form.title} (${form.medium})`)
+      fetchBooks()
     } else {
-      const { error } = await supabase.from('books').insert(form)
+      const { data: newBook, error } = await supabase.from('books').insert(form).select().single()
       if (error) { toast.error('Failed to add book'); return }
       toast.success('Book added')
       logAction('BOOK_CREATED', `${form.title} (${form.medium}, ${form.category})`)
+      fetchBooks()
+
+      if (newBook.unit && newBook.exam_level) {
+        const { data: similarBooks } = await supabase
+          .from('books')
+          .select('id')
+          .eq('unit', newBook.unit)
+          .eq('exam_level', newBook.exam_level)
+          .eq('is_active', true)
+          .neq('id', newBook.id)
+
+        if (similarBooks?.length > 0) {
+          const { data: bundleLinks } = await supabase
+            .from('bundle_books')
+            .select('bundle_id, bundles(id, name, is_active)')
+            .in('book_id', similarBooks.map(b => b.id))
+
+          const uniqueBundles = [...new Map(
+            (bundleLinks || [])
+              .filter(bl => bl.bundles?.is_active)
+              .map(bl => [bl.bundle_id, bl.bundles])
+          ).values()].filter(Boolean)
+
+          if (uniqueBundles.length > 0) {
+            setBundlePrompt({ bookId: newBook.id, bookTitle: newBook.title, bundles: uniqueBundles })
+          }
+        }
+      }
     }
-    fetchBooks()
+  }
+
+  async function handleAddToBundles(bundleIds) {
+    const rows = bundleIds.map(bid => ({ bundle_id: bid, book_id: bundlePrompt.bookId }))
+    const { error } = await supabase.from('bundle_books').insert(rows)
+    if (error) { toast.error('Failed to add to bundles'); return }
+    toast.success(`Added to ${bundleIds.length} bundle(s)`)
+    logAction('BUNDLE_UPDATED', `${bundlePrompt.bookTitle} added to ${bundleIds.length} bundle(s)`)
+    setBundlePrompt(null)
   }
 
   async function toggleActive(book) {
@@ -281,7 +357,14 @@ export default function Books() {
         ))}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} />
+      <BookModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} />
+      <BundlePromptModal
+        open={!!bundlePrompt}
+        onClose={() => setBundlePrompt(null)}
+        onConfirm={handleAddToBundles}
+        bundles={bundlePrompt?.bundles}
+        bookTitle={bundlePrompt?.bookTitle}
+      />
     </div>
   )
 }

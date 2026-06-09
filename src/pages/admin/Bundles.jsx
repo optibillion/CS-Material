@@ -1,26 +1,37 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Package, Trash2 } from 'lucide-react'
+import { Plus, Package, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 
-function Modal({ open, onClose, onSave, books }) {
+function Modal({ open, onClose, onSave, books, initial }) {
   const [name, setName] = useState('')
   const [selected, setSelected] = useState([])
   const [search, setSearch] = useState('')
-  useEffect(() => { if (open) { setName(''); setSelected([]); setSearch('') } }, [open])
+  const isEdit = !!initial
+
+  useEffect(() => {
+    if (open) {
+      setName(initial?.name || '')
+      setSelected(initial?.bundle_books?.map(bb => bb.book_id) || [])
+      setSearch('')
+    }
+  }, [open, initial])
+
   function toggle(id) { setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]) }
+
   async function handleSave() {
     if (!name.trim()) { toast.error('Bundle name required'); return }
     if (selected.length === 0) { toast.error('Select at least one book'); return }
     await onSave(name, selected); onClose()
   }
+
   const filtered = books.filter(b => b.title.toLowerCase().includes(search.toLowerCase()))
   if (!open) return null
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6 max-h-[90vh] flex flex-col">
-        <h2 className="text-white font-semibold text-lg mb-5">Create Bundle</h2>
+        <h2 className="text-white font-semibold text-lg mb-5">{isEdit ? 'Edit Bundle' : 'Create Bundle'}</h2>
         <div className="space-y-4 flex-1 overflow-y-auto">
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Bundle Name *</label>
@@ -47,7 +58,9 @@ function Modal({ open, onClose, onSave, books }) {
         </div>
         <div className="flex gap-3 mt-5">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Create Bundle</button>
+          <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">
+            {isEdit ? 'Save Changes' : 'Create Bundle'}
+          </button>
         </div>
       </div>
     </div>
@@ -59,6 +72,7 @@ export default function Bundles() {
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState(null)
 
   useEffect(() => { fetchAll() }, [])
 
@@ -71,7 +85,7 @@ export default function Bundles() {
     setBundles(bu || []); setBooks(bo || []); setLoading(false)
   }
 
-  async function handleSave(name, bookIds) {
+  async function handleCreate(name, bookIds) {
     const { data: bundle, error } = await supabase.from('bundles').insert({ name }).select().single()
     if (error) { toast.error('Failed to create bundle'); return }
     const rows = bookIds.map(book_id => ({ bundle_id: bundle.id, book_id }))
@@ -79,6 +93,19 @@ export default function Bundles() {
     if (e2) { toast.error('Failed to add books'); return }
     toast.success('Bundle created')
     logAction('BUNDLE_CREATED', `${name} — ${bookIds.length} books`)
+    fetchAll()
+  }
+
+  async function handleEdit(name, bookIds) {
+    const { error: e1 } = await supabase.from('bundles').update({ name }).eq('id', editing.id)
+    if (e1) { toast.error('Failed to update bundle'); return }
+    await supabase.from('bundle_books').delete().eq('bundle_id', editing.id)
+    const rows = bookIds.map(book_id => ({ bundle_id: editing.id, book_id }))
+    const { error: e2 } = await supabase.from('bundle_books').insert(rows)
+    if (e2) { toast.error('Failed to update books'); return }
+    toast.success('Bundle updated')
+    logAction('BUNDLE_UPDATED', `${editing.name} → ${name} — ${bookIds.length} books`)
+    setEditing(null)
     fetchAll()
   }
 
@@ -116,11 +143,11 @@ export default function Bundles() {
           {bundles.map(b => (
             <div key={b.id} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 ${!b.is_active ? 'opacity-50' : ''}`}>
               <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <Package size={16} className="text-[#f0a500]" />
-                  <h3 className="text-white font-semibold text-sm">{b.name}</h3>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Package size={16} className="text-[#f0a500] flex-shrink-0" />
+                  <h3 className="text-white font-semibold text-sm truncate">{b.name}</h3>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${b.is_active ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>
+                <span className={`text-xs px-2 py-0.5 rounded-full border flex-shrink-0 ml-2 ${b.is_active ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>
                   {b.is_active ? 'Active' : 'Inactive'}
                 </span>
               </div>
@@ -133,15 +160,23 @@ export default function Bundles() {
                 ))}
               </div>
               <p className="text-[#6b7280] text-xs mb-3">{b.bundle_books?.length} books</p>
-              <button onClick={() => toggleActive(b)}
-                className="w-full text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
-                {b.is_active ? 'Deactivate' : 'Activate'}
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(b)}
+                  className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
+                  <Pencil size={11} /> Edit
+                </button>
+                <button onClick={() => toggleActive(b)}
+                  className="flex-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
+                  {b.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
       )}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} books={books} />
+
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleCreate} books={books} initial={null} />
+      <Modal open={!!editing} onClose={() => setEditing(null)} onSave={handleEdit} books={books} initial={editing} />
     </div>
   )
 }

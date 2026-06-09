@@ -29,7 +29,7 @@ export default function UniversalSearch() {
     timeout.current = setTimeout(async () => {
       setLoading(true)
       const [{ data: students }, { data: books }, { data: bundles }] = await Promise.all([
-        supabase.from('students').select('id, name, student_id, phone, course_name')
+        supabase.from('students').select('id, name, student_id, phone, courses(name)')
           .or(`name.ilike.%${q}%,student_id.ilike.%${q}%,phone.ilike.%${q}%`).limit(4),
         supabase.from('books').select('id, title, category, medium').eq('is_active', true)
           .ilike('title', `%${q}%`).limit(3),
@@ -82,7 +82,7 @@ export default function UniversalSearch() {
                       className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-[#2a2a45] transition-colors text-left">
                       <div>
                         <p className="text-white text-sm font-medium">{s.name}</p>
-                        <p className="text-[#6b7280] text-xs">{s.phone} · {s.course_name || 'No course'}</p>
+                        <p className="text-[#6b7280] text-xs">{s.phone} · {s.courses?.name || 'No course'}</p>
                       </div>
                       <span className="text-[#f0a500] text-xs font-mono">{s.student_id}</span>
                     </button>

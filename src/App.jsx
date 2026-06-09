@@ -77,8 +77,7 @@ export default function App() {
           <Route path="batches" element={<AdminBatches />} />
           <Route path="courses" element={<AdminCourses />} />
           <Route path="issue" element={<AdminIssue />} />
-<Route path="batches" element={<AdminBatches />} />
-<Route path="students/:id" element={<StudentDetail />} />
+          <Route path="students/:id" element={<StudentDetail />} />
         </Route>
 
         {/* Issuer routes */}

@@ -6,13 +6,13 @@ import { Search, Package, Check, UserPlus, Printer } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
 
-function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
-  const [form, setForm] = useState({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' })
+function CreateStudentModal({ open, onClose, onSave, batches, courses, prefillName }) {
+  const [form, setForm] = useState({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', course_id: '', medium: '' })
   const [errors, setErrors] = useState({})
   const today = new Date().toISOString().split('T')[0]
   const dobMax = new Date(new Date().setFullYear(new Date().getFullYear() - 15)).toISOString().split('T')[0]
   useEffect(() => {
-    if (open) { setForm({ name: prefillName || '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' }); setErrors({}) }
+    if (open) { setForm({ name: prefillName || '', phone: '', dob: '', admission_date: '', batch_id: '', course_id: '', medium: '' }); setErrors({}) }
   }, [open, prefillName])
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
   async function handleSave() {
@@ -63,13 +63,23 @@ function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
               className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.admission_date ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
             {errors.admission_date && <p className="text-red-400 text-xs mt-1">{errors.admission_date}</p>}
           </div>
-          <div>
-            <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch</label>
-            <select value={form.batch_id} onChange={e => set('batch_id', e.target.value)}
-              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
-              <option value="">Select batch</option>
-              {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch</label>
+              <select value={form.batch_id} onChange={e => set('batch_id', e.target.value)}
+                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
+                <option value="">Select batch</option>
+                {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[#9ca3af] text-sm mb-1.5 block">Course</label>
+              <select value={form.course_id} onChange={e => set('course_id', e.target.value)}
+                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
+                <option value="">Select course</option>
+                {(courses||[]).filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Medium *</label>
@@ -104,6 +114,7 @@ export default function AdminIssue() {
   const [books, setBooks] = useState([])
   const [bundles, setBundles] = useState([])
   const [batches, setBatches] = useState([])
+  const [courses, setCourses] = useState([])
   const [selectedBooks, setSelectedBooks] = useState([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -116,14 +127,16 @@ export default function AdminIssue() {
 
   useEffect(() => {
     async function init() {
-      const [{ data: booksData }, { data: bundlesData }, { data: batchesData }] = await Promise.all([
+      const [{ data: booksData }, { data: bundlesData }, { data: batchesData }, { data: coursesData }] = await Promise.all([
         supabase.from('books').select('*').eq('is_active', true),
         supabase.from('bundles').select('*, bundle_books(book_id)').eq('is_active', true),
-        supabase.from('batches').select('*').eq('is_active', true)
+        supabase.from('batches').select('*').eq('is_active', true),
+        supabase.from('courses').select('*').eq('is_active', true).order('name')
       ])
       setBooks(booksData || [])
       setBundles(bundlesData || [])
       setBatches(batchesData || [])
+      setCourses(coursesData || [])
 
       const studentId = searchParams.get('student')
       if (studentId) {
@@ -181,6 +194,7 @@ export default function AdminIssue() {
       dob: form.dob || null,
       admission_date: form.admission_date || null,
       batch_id: form.batch_id || null,
+      course_id: form.course_id || null,
       medium: form.medium || null,
       created_by: profile?.id
     }
@@ -203,7 +217,7 @@ export default function AdminIssue() {
   function selectBundle(bundle) {
     const allIds = bundle.bundle_books.map(b => b.book_id)
     const mediumIds = selectedStudent?.medium
-      ? allIds.filter(id => books.find(b => b.id === id)?.medium === selectedStudent.medium)
+      ? allIds.filter(id => { const m = books.find(b => b.id === id)?.medium; return m === selectedStudent.medium || m === 'both' })
       : allIds
     const ids = mediumIds.filter(id => !studentIssuances.includes(id))
     const alreadyIssued = mediumIds.length - ids.length
@@ -406,7 +420,7 @@ export default function AdminIssue() {
               )}
             </div>
             {(() => {
-              const mediumBooks = books.filter(b => !selectedStudent?.medium || b.medium === selectedStudent.medium)
+              const mediumBooks = books.filter(b => !selectedStudent?.medium || b.medium === selectedStudent.medium || b.medium === 'both')
               const examOptions = [...new Set(mediumBooks.map(b => b.exam_level).filter(Boolean))].sort()
               const unitOptions = [...new Set(mediumBooks.filter(b => examFilter === 'all' || b.exam_level === examFilter).map(b => b.unit).filter(Boolean))].sort()
               const visible = mediumBooks.filter(b =>
@@ -486,7 +500,7 @@ export default function AdminIssue() {
       )}
 
       <CreateStudentModal open={creating} onClose={() => setCreating(false)}
-        onSave={handleCreateStudent} batches={batches} prefillName={searchQ} />
+        onSave={handleCreateStudent} batches={batches} courses={courses} prefillName={searchQ} />
 
       {confirmOpen && selectedStudent && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">

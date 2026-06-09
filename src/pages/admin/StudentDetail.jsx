@@ -7,7 +7,7 @@ import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 
-function EditModal({ open, onClose, onSave, student, batches, isAdmin, allUsers }) {
+function EditModal({ open, onClose, onSave, student, batches, courses, isAdmin, allUsers }) {
   const [form, setForm] = useState({})
   useEffect(() => {
     if (open && student) setForm({
@@ -16,6 +16,7 @@ function EditModal({ open, onClose, onSave, student, batches, isAdmin, allUsers 
       dob: student.dob || '',
       admission_date: student.admission_date || '',
       batch_id: student.batch_id || '',
+      course_id: student.course_id || '',
       medium: student.medium || '',
       created_by: student.created_by || ''
     })
@@ -53,13 +54,23 @@ function EditModal({ open, onClose, onSave, student, batches, isAdmin, allUsers 
             <input type="date" value={form.admission_date} onChange={e => set('admission_date', e.target.value)}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
           </div>
-          <div>
-            <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch</label>
-            <select value={form.batch_id} onChange={e => set('batch_id', e.target.value)}
-              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
-              <option value="">No batch</option>
-              {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch</label>
+              <select value={form.batch_id} onChange={e => set('batch_id', e.target.value)}
+                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
+                <option value="">No batch</option>
+                {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[#9ca3af] text-sm mb-1.5 block">Course</label>
+              <select value={form.course_id} onChange={e => set('course_id', e.target.value)}
+                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
+                <option value="">No course</option>
+                {(courses||[]).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Medium</label>
@@ -120,6 +131,7 @@ export default function StudentDetail() {
   const [student, setStudent] = useState(null)
   const [issuances, setIssuances] = useState([])
   const [batches, setBatches] = useState([])
+  const [courses, setCourses] = useState([])
   const [allUsers, setAllUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [reversing, setReversing] = useState(null)
@@ -129,14 +141,15 @@ export default function StudentDetail() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: s }, { data: i }, { data: b }, { data: u }] = await Promise.all([
-      supabase.from('students').select('*, batches(name), users!students_created_by_fkey(name)').eq('id', id).single(),
+    const [{ data: s }, { data: i }, { data: b }, { data: c }, { data: u }] = await Promise.all([
+      supabase.from('students').select('*, batches(name), courses(name), users!students_created_by_fkey(name)').eq('id', id).single(),
       supabase.from('issuances').select('*, books(title, category, medium), users!issuances_issued_by_fkey(name)')
         .eq('student_id', id).order('issued_at', { ascending: false }),
       supabase.from('batches').select('*').eq('is_active', true),
+      supabase.from('courses').select('*').eq('is_active', true).order('name'),
       supabase.from('users').select('id, name').eq('is_active', true).order('name')
     ])
-    setStudent(s); setIssuances(i || []); setBatches(b || []); setAllUsers(u || []); setLoading(false)
+    setStudent(s); setIssuances(i || []); setBatches(b || []); setCourses(c || []); setAllUsers(u || []); setLoading(false)
   }
 
   async function handleEdit(form) {
@@ -146,6 +159,7 @@ export default function StudentDetail() {
       dob: form.dob || null,
       admission_date: form.admission_date || null,
       batch_id: form.batch_id || null,
+      course_id: form.course_id || null,
       medium: form.medium || null
     }
     if (isAdmin) payload.created_by = form.created_by || null
@@ -209,6 +223,7 @@ export default function StudentDetail() {
           {[
             { label: 'Phone', value: student.phone },
             { label: 'Batch', value: student.batches?.name },
+            { label: 'Course', value: student.courses?.name },
             { label: 'Admitted', value: student.admission_date ? format(new Date(student.admission_date), 'dd MMM yyyy') : null },
           ].map(({ label, value }) => (
             <div key={label}>
@@ -265,7 +280,7 @@ export default function StudentDetail() {
         </div>
       )}
 
-      <EditModal open={editing} onClose={() => setEditing(false)} onSave={handleEdit} student={student} batches={batches} isAdmin={isAdmin} allUsers={allUsers} />
+      <EditModal open={editing} onClose={() => setEditing(false)} onSave={handleEdit} student={student} batches={batches} courses={courses} isAdmin={isAdmin} allUsers={allUsers} />
       <ReversalModal open={!!reversing} onClose={() => setReversing(null)} onConfirm={handleReversal} issuance={reversing} />
     </div>
   )
