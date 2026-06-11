@@ -6,9 +6,9 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 
-function AllotmentModal({ open, onClose, onSave, books, initial }) {
+function AllotmentModal({ open, onClose, onSave, books, initial, stockMap }) {
   const isEdit = !!initial
-  const blank = { institution_name: '', contact_person: '', book_id: '', qty: '', type: 'external', from_location: '', to_location: '', approved_by: '', notes: '' }
+  const blank = { institution_name: '', contact_person: '', book_id: '', qty: '', type: 'external', from_location: '', to_location: '', approved_by: '', notes: '', deduct_inventory: false }
   const [form, setForm] = useState(blank)
   useEffect(() => {
     if (open) setForm(initial ? {
@@ -20,7 +20,8 @@ function AllotmentModal({ open, onClose, onSave, books, initial }) {
       from_location: initial.from_location || '',
       to_location: initial.to_location || '',
       approved_by: initial.approved_by || '',
-      notes: initial.notes || ''
+      notes: initial.notes || '',
+      deduct_inventory: false
     } : blank)
   }, [open, initial])
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
@@ -28,6 +29,8 @@ function AllotmentModal({ open, onClose, onSave, books, initial }) {
     if (!form.institution_name.trim() || !form.book_id || !form.qty) { toast.error('Fill required fields'); return }
     await onSave(form); onClose()
   }
+  const availStock = stockMap?.[form.book_id] ?? null
+  const qty = parseInt(form.qty) || 0
   if (!open) return null
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
@@ -95,6 +98,22 @@ function AllotmentModal({ open, onClose, onSave, books, initial }) {
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={2}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] resize-none placeholder-[#4b5563]" placeholder="Optional notes" />
           </div>
+          {!isEdit && (
+            <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border cursor-pointer transition-all ${form.deduct_inventory ? 'bg-orange-500/10 border-orange-500/30' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
+              <input type="checkbox" checked={form.deduct_inventory} onChange={e => set('deduct_inventory', e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-white text-sm font-medium">Deduct from Inventory</p>
+                <p className="text-[#6b7280] text-xs">
+                  {form.book_id && availStock !== null
+                    ? `Stock available: ${availStock} — will deduct ${qty}`
+                    : 'Will reduce available stock for this book'}
+                </p>
+              </div>
+              {form.deduct_inventory && qty > 0 && availStock !== null && qty > availStock && (
+                <span className="text-red-400 text-xs flex-shrink-0">Insufficient stock</span>
+              )}
+            </label>
+          )}
         </div>
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
@@ -135,6 +154,8 @@ export default function Allotments() {
   const { profile } = useAuthStore()
   const [allotments, setAllotments] = useState([])
   const [books, setBooks] = useState([])
+  const [stockEntries, setStockEntries] = useState([])
+  const [stockMap, setStockMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showReversed, setShowReversed] = useState(false)
@@ -146,20 +167,42 @@ export default function Allotments() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: a }, { data: b }] = await Promise.all([
+    const [{ data: a }, { data: b }, { data: s }] = await Promise.all([
       supabase.from('allotments').select('*, books(title), users!allotments_allotted_by_fkey(name)').order('allotted_at', { ascending: false }),
-      supabase.from('books').select('*').eq('is_active', true)
+      supabase.from('books').select('*').eq('is_active', true),
+      supabase.from('stock').select('id, book_id, available_qty, location')
     ])
-    setAllotments(a || []); setBooks(b || []); setLoading(false)
+    setAllotments(a || []); setBooks(b || [])
+    setStockEntries(s || [])
+    const map = {}
+    for (const entry of (s || [])) map[entry.book_id] = (map[entry.book_id] || 0) + (entry.available_qty || 0)
+    setStockMap(map)
+    setLoading(false)
   }
 
   async function handleCreate(form) {
-    const payload = { ...form, qty: parseInt(form.qty), allotted_by: profile?.id, to_location: form.type === 'internal' ? form.to_location : null }
+    const { deduct_inventory, ...rest } = form
+    const payload = { ...rest, qty: parseInt(form.qty), allotted_by: profile?.id, to_location: form.type === 'internal' ? form.to_location : null }
     const { error } = await supabase.from('allotments').insert(payload)
     if (error) { toast.error('Failed to record allotment'); return }
-    toast.success('Allotment recorded')
+
+    if (deduct_inventory) {
+      let remaining = parseInt(form.qty) || 0
+      const entries = stockEntries
+        .filter(e => e.book_id === form.book_id && (e.available_qty || 0) > 0)
+        .sort((a, b) => b.available_qty - a.available_qty)
+      for (const entry of entries) {
+        if (remaining <= 0) break
+        const deduct = Math.min(remaining, entry.available_qty)
+        await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
+        remaining -= deduct
+      }
+      if (remaining > 0) toast.error(`Warning: only partially deducted — ${remaining} qty had no stock`)
+    }
+
+    toast.success(`Allotment recorded${deduct_inventory ? ' & inventory deducted' : ''}`)
     const bookTitle = books.find(b => b.id === form.book_id)?.title || form.book_id
-    logAction('ALLOTMENT_CREATED', `${bookTitle} x${form.qty} → ${form.institution_name} (${form.type})`)
+    logAction('ALLOTMENT_CREATED', `${bookTitle} x${form.qty} → ${form.institution_name} (${form.type})${deduct_inventory ? ' [inventory deducted]' : ''}`)
     fetchAll()
   }
 
@@ -290,8 +333,8 @@ export default function Allotments() {
         </table>
       </div>
 
-      <AllotmentModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleCreate} books={books} initial={null} />
-      <AllotmentModal open={!!editing} onClose={() => setEditing(null)} onSave={handleEdit} books={books} initial={editing} />
+      <AllotmentModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleCreate} books={books} initial={null} stockMap={stockMap} />
+      <AllotmentModal open={!!editing} onClose={() => setEditing(null)} onSave={handleEdit} books={books} initial={editing} stockMap={stockMap} />
       <ReversalModal open={!!reversing} onClose={() => setReversing(null)} onConfirm={handleReversal} allotment={reversing} />
     </div>
   )

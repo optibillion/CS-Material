@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { ArrowLeft, BookOpen, RotateCcw, Edit, Send } from 'lucide-react'
+import { ArrowLeft, BookOpen, RotateCcw, Edit, Send, ShoppingBag, UserX, UserCheck } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
@@ -170,6 +170,19 @@ export default function StudentDetail() {
     fetchAll()
   }
 
+  async function handleToggleActive() {
+    const newVal = student.is_active === false ? true : false
+    const { error } = await supabase.from('students').update({ is_active: newVal }).eq('id', id)
+    if (error) {
+      if (error.code === '42703') toast.error('Run migration: ALTER TABLE students ADD COLUMN is_active BOOLEAN DEFAULT TRUE')
+      else toast.error('Failed to update')
+      return
+    }
+    toast.success(newVal ? 'Student reactivated' : 'Student deactivated')
+    logAction(newVal ? 'STUDENT_ACTIVATED' : 'STUDENT_DEACTIVATED', `${student.name} (${student.student_id})`)
+    fetchAll()
+  }
+
   async function handleReversal(reason) {
     const { error } = await supabase.from('issuances').update({
       is_reversed: true, reversed_by: profile?.id,
@@ -204,10 +217,16 @@ export default function StudentDetail() {
           <div>
             <h1 className="text-white text-xl font-bold">{student.name}</h1>
             <p className="text-[#f0a500] text-sm font-mono mt-1">{student.student_id}</p>
+            {student.is_active === false && (
+              <span className="text-xs bg-orange-500/20 text-orange-400 border border-orange-500/30 px-2 py-0.5 rounded-full mt-1 inline-block">Inactive</span>
+            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded-full">
-              {active.length} active
+              {active.length} active books
+            </span>
+            <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-medium ${student.bag_issued ? 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' : 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>
+              <ShoppingBag size={11} /> {student.bag_issued ? 'Bag issued' : 'No bag'}
             </span>
             <button onClick={() => navigate(`/admin/issue?student=${id}`)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white transition-all">
@@ -217,6 +236,12 @@ export default function StudentDetail() {
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
               <Edit size={13} /> Edit
             </button>
+            {isAdmin && (
+              <button onClick={handleToggleActive}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all ${student.is_active === false ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400' : 'bg-[#2a2a45] hover:bg-orange-500/20 hover:text-orange-400 text-[#9ca3af]'}`}>
+                {student.is_active === false ? <><UserCheck size={13}/> Activate</> : <><UserX size={13}/> Deactivate</>}
+              </button>
+            )}
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Search, Package, Check, UserPlus, Printer } from 'lucide-react'
+import { Search, Package, Check, UserPlus, Printer, ShoppingBag } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
 
@@ -123,6 +123,7 @@ export default function AdminIssue() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
+  const [issueBag, setIssueBag] = useState(false)
   const searchTimeout = useRef(null)
 
   useEffect(() => {
@@ -169,6 +170,7 @@ export default function AdminIssue() {
     setSearchQ(s.name)
     setSearched(false)
     setSelectedBooks([])
+    setIssueBag(false)
     const { data } = await supabase.from('issuances')
       .select('book_id').eq('student_id', s.id).eq('is_reversed', false)
     setStudentIssuances(data?.map(i => i.book_id) || [])
@@ -254,11 +256,21 @@ export default function AdminIssue() {
     }))
     const { error } = await supabase.from('issuances').insert(rows)
     if (error) { toast.error('Failed to issue'); setLoading(false); return }
-    toast.success(`✓ ${booksToIssue.length} book(s) issued to ${selectedStudent.name}`)
+    if (issueBag && !selectedStudent.bag_issued) {
+      const { error: bagErr } = await supabase.from('students').update({ bag_issued: true }).eq('id', selectedStudent.id)
+      if (bagErr && bagErr.code === '42703') {
+        toast.error('Run DB migration to enable bag tracking: ALTER TABLE students ADD COLUMN bag_issued BOOLEAN DEFAULT FALSE')
+      } else if (!bagErr) {
+        setSelectedStudent(prev => ({ ...prev, bag_issued: true }))
+      }
+    }
+
+    toast.success(`✓ ${booksToIssue.length} book(s) issued to ${selectedStudent.name}${issueBag && !selectedStudent.bag_issued ? ' + bag' : ''}`)
     const issuedIds = [...booksToIssue]
     const bookNames = booksToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')
-    logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${booksToIssue.length} book(s): ${bookNames}`)
+    logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${booksToIssue.length} book(s): ${bookNames}${issueBag && !selectedStudent.bag_issued ? ' + bag' : ''}`)
     setSelectedBooks([])
+    setIssueBag(false)
     const { data } = await supabase.from('issuances')
       .select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
     setStudentIssuances(data?.map(i => i.book_id) || [])
@@ -314,7 +326,7 @@ export default function AdminIssue() {
   function reset() {
     setSelectedStudent(null); setSearchQ(''); setSearchResults([])
     setSearched(false); setSelectedBooks([]); setStudentIssuances([]); setLastIssued(null)
-    setExamFilter('all'); setUnitFilter('all')
+    setExamFilter('all'); setUnitFilter('all'); setIssueBag(false)
   }
 
   const noResults = searched && searchResults.length === 0 && searchQ.length >= 2
@@ -374,7 +386,13 @@ export default function AdminIssue() {
             <div>
               <p className="text-white font-semibold text-sm">{selectedStudent.name}</p>
               <p className="text-[#9ca3af] text-xs">{selectedStudent.student_id}</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">{studentIssuances.length} books already issued</p>
+              <div className="flex items-center gap-3 mt-0.5">
+                <p className="text-[#6b7280] text-xs">{studentIssuances.length} books issued</p>
+                <span className={`flex items-center gap-1 text-xs font-medium ${selectedStudent.bag_issued ? 'text-emerald-400' : 'text-[#6b7280]'}`}>
+                  <ShoppingBag size={11} />
+                  {selectedStudent.bag_issued ? 'Bag issued' : 'No bag yet'}
+                </span>
+              </div>
             </div>
             <button onClick={reset} className="text-[#6b7280] hover:text-white text-xs border border-[#2a2a45] px-3 py-1.5 rounded-lg transition-colors">Change</button>
           </div>
@@ -490,9 +508,22 @@ export default function AdminIssue() {
                   )
                 })}
               </div>
+              <label className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-all ${selectedStudent.bag_issued ? 'opacity-50 cursor-not-allowed border-[#2a2a45] bg-[#12121f]' : issueBag ? 'bg-[#f0a500]/10 border-[#f0a500]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#f0a500]/40'}`}>
+                <input type="checkbox" checked={issueBag} disabled={!!selectedStudent.bag_issued}
+                  onChange={e => setIssueBag(e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <ShoppingBag size={13} className={issueBag ? 'text-[#f0a500]' : 'text-[#6b7280]'} />
+                    <p className="text-white text-sm font-medium">
+                      {selectedStudent.bag_issued ? 'Bag already issued' : 'Issue bag to student'}
+                    </p>
+                  </div>
+                  {!selectedStudent.bag_issued && <p className="text-[#6b7280] text-xs mt-0.5">Mark that a bag is being given along with books</p>}
+                </div>
+              </label>
               <button onClick={() => setConfirmOpen(true)} disabled={loading}
                 className="w-full bg-[#bd0a0a] hover:bg-[#a00909] disabled:opacity-50 text-white font-semibold py-3 rounded-lg text-sm transition-all">
-                Issue {selectedBooks.length} Book(s) to {selectedStudent.name}
+                Issue {selectedBooks.length} Book(s){issueBag ? ' + Bag' : ''} to {selectedStudent.name}
               </button>
             </div>
           )}
@@ -513,7 +544,7 @@ export default function AdminIssue() {
               <p className="text-[#f0a500] text-sm font-mono">{selectedStudent.student_id}</p>
               {selectedStudent.phone && <p className="text-[#9ca3af] text-sm">{selectedStudent.phone}</p>}
             </div>
-            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-4 mb-6">
+            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-4 mb-4">
               <p className="text-xs text-[#6b7280] uppercase tracking-wide mb-2">Books to Issue ({selectedBooks.length})</p>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {selectedBooks.map(id => {
@@ -528,6 +559,12 @@ export default function AdminIssue() {
                 })}
               </div>
             </div>
+            {issueBag && (
+              <div className="bg-[#f0a500]/10 border border-[#f0a500]/30 rounded-lg px-4 py-3 mb-6 flex items-center gap-2">
+                <ShoppingBag size={14} className="text-[#f0a500] flex-shrink-0" />
+                <p className="text-[#f0a500] text-sm font-medium">Bag will also be issued to this student</p>
+              </div>
+            )}
             <div className="flex gap-3">
               <button onClick={() => setConfirmOpen(false)}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">
