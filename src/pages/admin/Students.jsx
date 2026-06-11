@@ -217,7 +217,7 @@ export default function Students() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: s }, { data: b }, { data: c }] = await Promise.all([
-      supabase.from('students').select('*, batches(name), courses(name), users!students_created_by_fkey(name)').order('created_at', { ascending: false }),
+      supabase.from('students').select('*, batches(name, batch_code), courses(name), users!students_created_by_fkey(name)').order('created_at', { ascending: false }),
       supabase.from('batches').select('*').order('name'),
       supabase.from('courses').select('*').eq('is_active', true).order('name')
     ])
@@ -330,7 +330,7 @@ export default function Students() {
         <table className="w-full min-w-[750px]">
           <thead>
             <tr className="border-b border-[#2a2a45]">
-              {['STUDENT ID','NAME','PHONE','BATCH','COURSE','ADMITTED','ACTIONS'].map(h=>(
+              {['STUDENT ID','NAME','PHONE','BATCH / CODE','COURSE','ADMITTED','ACTIONS'].map(h=>(
                 <th key={h} className="text-left text-[#6b7280] text-xs font-medium px-4 py-3">{h}</th>
               ))}
             </tr>
@@ -352,7 +352,14 @@ export default function Students() {
                   {s.is_active === false && <span className="text-xs text-orange-400">Inactive</span>}
                 </td>
                 <td className="px-4 py-3 text-[#9ca3af] text-sm cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>{s.phone||'—'}</td>
-                <td className="px-4 py-3 text-[#9ca3af] text-sm cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>{s.batches?.name||'—'}</td>
+                <td className="px-4 py-3 cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>
+                  {s.batches ? (
+                    <div>
+                      {s.batches.batch_code && <span className="text-[#f0a500] text-xs font-mono font-semibold tracking-widest block">{s.batches.batch_code}</span>}
+                      <span className="text-[#9ca3af] text-sm">{s.batches.name}</span>
+                    </div>
+                  ) : <span className="text-[#6b7280] text-sm">—</span>}
+                </td>
                 <td className="px-4 py-3 text-[#9ca3af] text-sm cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>{s.courses?.name||'—'}</td>
                 <td className="px-4 py-3 text-[#9ca3af] text-sm cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>{s.admission_date?format(new Date(s.admission_date),'dd MMM yyyy'):'—'}</td>
                 <td className="px-4 py-3">
@@ -390,7 +397,11 @@ export default function Students() {
             </div>
             <div className="grid grid-cols-2 gap-1.5 mb-3 cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>
               <p className="text-[#6b7280] text-xs">📞 {s.phone||'—'}</p>
-              <p className="text-[#6b7280] text-xs">🏫 {s.batches?.name||'—'}</p>
+              <p className="text-[#6b7280] text-xs">
+                🏫 {s.batches
+                  ? <>{s.batches.batch_code && <span className="text-[#f0a500] font-mono font-semibold">{s.batches.batch_code} · </span>}{s.batches.name}</>
+                  : '—'}
+              </p>
               <p className="text-[#6b7280] text-xs">📚 {s.courses?.name||'—'}</p>
               <p className="text-[#6b7280] text-xs">📅 {s.admission_date?format(new Date(s.admission_date),'dd MMM yyyy'):'—'}</p>
             </div>

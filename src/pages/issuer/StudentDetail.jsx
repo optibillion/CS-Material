@@ -16,7 +16,7 @@ export default function IssuerStudentDetail() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: s }, { data: i }] = await Promise.all([
-      supabase.from('students').select('*, batches(name), courses(name), users!students_created_by_fkey(name)').eq('id', id).single(),
+      supabase.from('students').select('*, batches(name, batch_code), courses(name), users!students_created_by_fkey(name)').eq('id', id).single(),
       supabase.from('issuances')
         .select('*, books(title, category, medium), users!issuances_issued_by_fkey(name)')
         .eq('student_id', id)
@@ -60,7 +60,7 @@ export default function IssuerStudentDetail() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
           {[
             { label: 'Phone', value: student.phone },
-            { label: 'Batch', value: student.batches?.name },
+            { label: 'Batch', value: student.batches ? (student.batches.batch_code ? `${student.batches.batch_code} · ${student.batches.name}` : student.batches.name) : null },
             { label: 'Course', value: student.courses?.name },
             { label: 'Admitted', value: student.admission_date ? format(new Date(student.admission_date), 'dd MMM yyyy') : null },
           ].map(({ label, value }) => (
