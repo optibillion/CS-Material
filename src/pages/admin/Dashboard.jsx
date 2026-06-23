@@ -17,9 +17,10 @@ const MODAL_META = {
 
 function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 cursor-pointer hover:border-[#3a3a55] active:scale-95 transition-all`}
+      className="w-full text-left bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 hover:border-[#3a3a55] active:scale-95 transition-all"
     >
       <div className="flex items-start justify-between">
         <div>
@@ -32,7 +33,7 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
         </div>
       </div>
       <p className="text-[#4b5563] text-xs mt-2">Tap to view details</p>
-    </div>
+    </button>
   )
 }
 
