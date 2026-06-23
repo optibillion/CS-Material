@@ -1,18 +1,51 @@
 import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, generateStudentId, adjustStock } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Search, Package, Check, UserPlus, Printer, ShoppingBag } from 'lucide-react'
+import { Search, Package, Check, UserPlus, Printer, ShoppingBag, Languages } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
 
-function CreateStudentModal({ open, onClose, onSave, batches, courses, prefillName }) {
-  const [form, setForm] = useState({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', course_id: '', medium: '' })
+function SelectMediumModal({ open, student, onSave }) {
+  const [medium, setMedium] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { if (open) setMedium('') }, [open])
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Languages size={18} className="text-[#f0a500]" />
+          <h2 className="text-white font-semibold text-lg">Select Medium</h2>
+        </div>
+        <p className="text-[#6b7280] text-sm mb-6">
+          <span className="text-white font-medium">{student?.name}</span> has no medium on record. Select their medium — it will be saved to their profile and books will be filtered accordingly.
+        </p>
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          {['hindi', 'english'].map(m => (
+            <button key={m} type="button" onClick={() => setMedium(m)}
+              className={`py-5 rounded-xl border text-base font-semibold capitalize transition-all ${medium === m ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#bd0a0a] hover:text-white'}`}>
+              {m === 'hindi' ? 'Hindi' : 'English'}
+            </button>
+          ))}
+        </div>
+        <button onClick={async () => { if (!medium) return; setSaving(true); await onSave(medium); setSaving(false) }}
+          disabled={!medium || saving}
+          className="w-full bg-[#bd0a0a] hover:bg-[#a00909] disabled:opacity-40 text-white font-semibold py-3 rounded-lg text-sm transition-all">
+          {saving ? 'Saving...' : 'Save & Continue'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
+  const [form, setForm] = useState({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' })
   const [errors, setErrors] = useState({})
   const today = new Date().toISOString().split('T')[0]
   const dobMax = new Date(new Date().setFullYear(new Date().getFullYear() - 15)).toISOString().split('T')[0]
   useEffect(() => {
-    if (open) { setForm({ name: prefillName || '', phone: '', dob: '', admission_date: '', batch_id: '', course_id: '', medium: '' }); setErrors({}) }
+    if (open) { setForm({ name: prefillName || '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' }); setErrors({}) }
   }, [open, prefillName])
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
   async function handleSave() {
@@ -63,23 +96,13 @@ function CreateStudentModal({ open, onClose, onSave, batches, courses, prefillNa
               className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.admission_date ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
             {errors.admission_date && <p className="text-red-400 text-xs mt-1">{errors.admission_date}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch</label>
-              <select value={form.batch_id} onChange={e => set('batch_id', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
-                <option value="">Select batch</option>
-                {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Course</label>
-              <select value={form.course_id} onChange={e => set('course_id', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
-                <option value="">Select course</option>
-                {(courses||[]).filter(c => c.is_active).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Batch</label>
+            <select value={form.batch_id} onChange={e => set('batch_id', e.target.value)}
+              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
+              <option value="">Select batch</option>
+              {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Medium *</label>
@@ -114,7 +137,6 @@ export default function AdminIssue() {
   const [books, setBooks] = useState([])
   const [bundles, setBundles] = useState([])
   const [batches, setBatches] = useState([])
-  const [courses, setCourses] = useState([])
   const [selectedBooks, setSelectedBooks] = useState([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -124,20 +146,23 @@ export default function AdminIssue() {
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
   const [issueBag, setIssueBag] = useState(false)
+  const [stockMap, setStockMap] = useState({})
   const searchTimeout = useRef(null)
 
   useEffect(() => {
     async function init() {
-      const [{ data: booksData }, { data: bundlesData }, { data: batchesData }, { data: coursesData }] = await Promise.all([
+      const [{ data: booksData }, { data: bundlesData }, { data: batchesData }, { data: stockData }] = await Promise.all([
         supabase.from('books').select('*').eq('is_active', true),
         supabase.from('bundles').select('*, bundle_books(book_id)').eq('is_active', true),
         supabase.from('batches').select('*').eq('is_active', true),
-        supabase.from('courses').select('*').eq('is_active', true).order('name')
+        supabase.from('stock').select('book_id, available_qty, low_stock_threshold'),
       ])
       setBooks(booksData || [])
       setBundles(bundlesData || [])
       setBatches(batchesData || [])
-      setCourses(coursesData || [])
+      const sm = {}
+      for (const s of (stockData || [])) sm[s.book_id] = s
+      setStockMap(sm)
 
       const studentId = searchParams.get('student')
       if (studentId) {
@@ -176,6 +201,14 @@ export default function AdminIssue() {
     setStudentIssuances(data?.map(i => i.book_id) || [])
   }
 
+  async function handleSetMedium(medium) {
+    const { error } = await supabase.from('students').update({ medium }).eq('id', selectedStudent.id)
+    if (error) { toast.error('Failed to save medium'); return }
+    toast.success(`Medium set to ${medium}`)
+    logAction('STUDENT_UPDATED', `${selectedStudent.name} (${selectedStudent.student_id}) — medium set to ${medium}`)
+    setSelectedStudent(prev => ({ ...prev, medium }))
+  }
+
   async function handleCreateStudent(form) {
     const { data: existing } = await supabase
       .from('students').select('id, name, student_id').eq('phone', form.phone).maybeSingle()
@@ -191,12 +224,13 @@ export default function AdminIssue() {
         return
       }
     }
+    const student_id = await generateStudentId()
     const payload = {
+      student_id,
       name: form.name, phone: form.phone,
       dob: form.dob || null,
       admission_date: form.admission_date || null,
       batch_id: form.batch_id || null,
-      course_id: form.course_id || null,
       medium: form.medium || null,
       created_by: profile?.id
     }
@@ -256,19 +290,23 @@ export default function AdminIssue() {
     }))
     const { error } = await supabase.from('issuances').insert(rows)
     if (error) { toast.error('Failed to issue'); setLoading(false); return }
-    if (issueBag && !selectedStudent.bag_issued) {
-      const { error: bagErr } = await supabase.from('students').update({ bag_issued: true }).eq('id', selectedStudent.id)
+    await Promise.all(booksToIssue.map(bookId => adjustStock(bookId, -1)))
+    const bagWasNotIssued = issueBag && !selectedStudent.bag_issued
+    if (bagWasNotIssued) {
+      const now = new Date().toISOString()
+      const { error: bagErr } = await supabase.from('students').update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }).eq('id', selectedStudent.id)
       if (bagErr && bagErr.code === '42703') {
-        toast.error('Run DB migration to enable bag tracking: ALTER TABLE students ADD COLUMN bag_issued BOOLEAN DEFAULT FALSE')
+        toast.error('Run migration: add_bag_tracking.sql')
       } else if (!bagErr) {
-        setSelectedStudent(prev => ({ ...prev, bag_issued: true }))
+        setSelectedStudent(prev => ({ ...prev, bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }))
+        logAction('BAG_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id})`)
       }
     }
 
-    toast.success(`✓ ${booksToIssue.length} book(s) issued to ${selectedStudent.name}${issueBag && !selectedStudent.bag_issued ? ' + bag' : ''}`)
+    toast.success(`✓ ${booksToIssue.length} book(s) issued to ${selectedStudent.name}${bagWasNotIssued ? ' + bag' : ''}`)
     const issuedIds = [...booksToIssue]
     const bookNames = booksToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')
-    logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${booksToIssue.length} book(s): ${bookNames}${issueBag && !selectedStudent.bag_issued ? ' + bag' : ''}`)
+    logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${booksToIssue.length} book(s): ${bookNames}`)
     setSelectedBooks([])
     setIssueBag(false)
     const { data } = await supabase.from('issuances')
@@ -475,16 +513,31 @@ export default function AdminIssue() {
                     ) : visible.map(b => {
                       const isSelected = selectedBooks.includes(b.id)
                       const isIssued = studentIssuances.includes(b.id)
+                      const stock = stockMap[b.id]
+                      const isLowStock = stock && stock.available_qty <= stock.low_stock_threshold
+                      const isOutOfStock = stock && stock.available_qty === 0
                       return (
                         <label key={b.id}
                           className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${isIssued ? 'opacity-40 cursor-not-allowed bg-[#12121f] border-[#2a2a45]' : isSelected ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40 cursor-pointer' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55] cursor-pointer'}`}>
                           <input type="checkbox" checked={isSelected} disabled={isIssued} onChange={() => toggleBook(b.id)} className="accent-[#bd0a0a] w-4 h-4 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            {(b.exam_level||b.unit||b.part) && <p className="text-[#6b7280] text-xs">{[b.exam_level,b.unit,b.part].filter(Boolean).join(' › ')}</p>}
-                            <p className="text-white text-sm">{b.title}</p>
+                            {(b.exam_level || b.unit || b.part) ? (
+                              <>
+                                <p className="text-white text-sm font-semibold">{[b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')}</p>
+                                <p className="text-[#6b7280] text-xs truncate">{b.title}</p>
+                              </>
+                            ) : (
+                              <p className="text-white text-sm">{b.title}</p>
+                            )}
                             <p className="text-[#6b7280] text-xs mt-0.5">{b.category?.replace('_',' ')} · {b.medium}</p>
                           </div>
-                          {isIssued && <span className="text-xs text-[#6b7280] flex-shrink-0">Already issued</span>}
+                          {isIssued
+                            ? <span className="text-xs text-[#6b7280] flex-shrink-0">Already issued</span>
+                            : stock
+                              ? <span className={`text-xs flex-shrink-0 font-medium ${isOutOfStock ? 'text-red-400' : isLowStock ? 'text-orange-400' : 'text-emerald-400'}`}>
+                                  {isOutOfStock ? 'Out of stock' : `${stock.available_qty} left`}
+                                </span>
+                              : null}
                         </label>
                       )
                     })}
@@ -501,9 +554,18 @@ export default function AdminIssue() {
                 {selectedBooks.map(id => {
                   const book = books.find(b => b.id === id)
                   return (
-                    <div key={id} className="flex items-center gap-2">
-                      <Check size={13} className="text-emerald-400 flex-shrink-0" />
-                      <span className="text-[#9ca3af] text-sm">{book?.title}</span>
+                    <div key={id} className="flex items-start gap-2">
+                      <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        {(book?.exam_level || book?.unit || book?.part) ? (
+                          <>
+                            <p className="text-[#9ca3af] text-sm font-medium">{[book?.exam_level, book?.unit, book?.part].filter(Boolean).join(' › ')}</p>
+                            <p className="text-[#6b7280] text-xs truncate">{book?.title}</p>
+                          </>
+                        ) : (
+                          <p className="text-[#9ca3af] text-sm">{book?.title}</p>
+                        )}
+                      </div>
                     </div>
                   )
                 })}
@@ -530,8 +592,9 @@ export default function AdminIssue() {
         </>
       )}
 
+      <SelectMediumModal open={!!selectedStudent && !selectedStudent.medium} student={selectedStudent} onSave={handleSetMedium} />
       <CreateStudentModal open={creating} onClose={() => setCreating(false)}
-        onSave={handleCreateStudent} batches={batches} courses={courses} prefillName={searchQ} />
+        onSave={handleCreateStudent} batches={batches} prefillName={searchQ} />
 
       {confirmOpen && selectedStudent && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
@@ -546,14 +609,23 @@ export default function AdminIssue() {
             </div>
             <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-4 mb-4">
               <p className="text-xs text-[#6b7280] uppercase tracking-wide mb-2">Books to Issue ({selectedBooks.length})</p>
-              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+              <div className="space-y-2 max-h-48 overflow-y-auto">
                 {selectedBooks.map(id => {
                   const book = books.find(b => b.id === id)
                   return (
-                    <div key={id} className="flex items-center gap-2">
-                      <Check size={13} className="text-emerald-400 flex-shrink-0" />
-                      <span className="text-white text-sm">{book?.title}</span>
-                      <span className="text-[#6b7280] text-xs ml-auto">{book?.medium}</span>
+                    <div key={id} className="flex items-start gap-2">
+                      <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        {(book?.exam_level || book?.unit || book?.part) ? (
+                          <>
+                            <p className="text-white text-sm font-semibold">{[book?.exam_level, book?.unit, book?.part].filter(Boolean).join(' › ')}</p>
+                            <p className="text-[#6b7280] text-xs truncate">{book?.title}</p>
+                          </>
+                        ) : (
+                          <p className="text-white text-sm">{book?.title}</p>
+                        )}
+                      </div>
+                      <span className="text-[#6b7280] text-xs flex-shrink-0">{book?.medium}</span>
                     </div>
                   )
                 })}

@@ -1,14 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, BookOpen, Send } from 'lucide-react'
+import { ArrowLeft, BookOpen, Send, ShoppingBag } from 'lucide-react'
 import { format } from 'date-fns'
+import { logAction } from '../../lib/audit'
+import toast from 'react-hot-toast'
+import { useAuthStore } from '../../store/authStore'
 
 export default function IssuerStudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { profile } = useAuthStore()
   const [student, setStudent] = useState(null)
   const [issuances, setIssuances] = useState([])
+  const [bagIssuerName, setBagIssuerName] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => { fetchAll() }, [id])
@@ -16,14 +21,29 @@ export default function IssuerStudentDetail() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: s }, { data: i }] = await Promise.all([
-      supabase.from('students').select('*, batches(name, batch_code), courses(name), users!students_created_by_fkey(name)').eq('id', id).single(),
+      supabase.from('students').select('*, batches(name, batch_code), created_by_user:users!students_created_by_fkey(name)').eq('id', id).single(),
       supabase.from('issuances')
-        .select('*, books(title, category, medium), users!issuances_issued_by_fkey(name)')
+        .select('*, books(title, exam_level, unit, part, category, medium), users!issuances_issued_by_fkey(name)')
         .eq('student_id', id)
         .eq('is_reversed', false)
         .order('issued_at', { ascending: false })
     ])
-    setStudent(s); setIssuances(i || []); setLoading(false)
+    setStudent(s); setIssuances(i || [])
+    if (s?.bag_issued_by) {
+      const { data: u } = await supabase.from('users').select('name').eq('id', s.bag_issued_by).single()
+      setBagIssuerName(u?.name || null)
+    }
+    setLoading(false)
+  }
+
+  async function handleIssueBag() {
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('students').update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }).eq('id', id)
+    if (error) { toast.error('Failed to mark bag'); return }
+    toast.success(`Bag issued to ${student.name}`)
+    logAction('BAG_ISSUED', `${student.name} (${student.student_id})`)
+    setStudent(prev => ({ ...prev, bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }))
+    setBagIssuerName(profile?.name || null)
   }
 
   if (loading) return (
@@ -43,25 +63,40 @@ export default function IssuerStudentDetail() {
 
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5">
         <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-white text-xl font-bold">{student.name}</h1>
-            <p className="text-[#f0a500] text-sm font-mono mt-1">{student.student_id}</p>
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full overflow-hidden bg-[#2a2a45] border-2 border-[#3a3a55] flex items-center justify-center flex-shrink-0">
+              {student.profile_image_url
+                ? <img src={student.profile_image_url} alt="" className="w-full h-full object-cover" />
+                : <span className="text-white text-xl font-bold">{student.name?.split(' ').filter(Boolean).map(w=>w[0]).join('').toUpperCase().slice(0,2)||'?'}</span>}
+            </div>
+            <div>
+              <h1 className="text-white text-xl font-bold">{student.name}</h1>
+              <p className="text-[#f0a500] text-sm font-mono mt-1">{student.student_id}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-1 rounded-full">
               {issuances.length} books issued
             </span>
+            <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-medium ${student.bag_issued ? 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' : 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>
+              <ShoppingBag size={11} /> {student.bag_issued ? 'Bag issued' : 'No bag'}
+            </span>
+            {!student.bag_issued && (
+              <button onClick={handleIssueBag}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all">
+                <ShoppingBag size={13} /> Issue Bag
+              </button>
+            )}
             <button onClick={() => navigate(`/issuer/issue?student=${id}`)}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white transition-all">
               <Send size={13} /> Issue Material
             </button>
           </div>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
           {[
             { label: 'Phone', value: student.phone },
             { label: 'Batch', value: student.batches ? (student.batches.batch_code ? `${student.batches.batch_code} · ${student.batches.name}` : student.batches.name) : null },
-            { label: 'Course', value: student.courses?.name },
             { label: 'Admitted', value: student.admission_date ? format(new Date(student.admission_date), 'dd MMM yyyy') : null },
           ].map(({ label, value }) => (
             <div key={label}>
@@ -71,9 +106,16 @@ export default function IssuerStudentDetail() {
           ))}
           <div>
             <p className="text-[#6b7280] text-xs">Created By</p>
-            <p className="text-white text-sm font-medium mt-0.5">{student.users?.name || '—'}</p>
-            <p className="text-[#6b7280] text-xs">{student.created_at ? format(new Date(student.created_at), 'dd MMM yy') : ''}</p>
+            <p className="text-white text-sm font-medium mt-0.5">{student.created_by_user?.name || '—'}</p>
+            <p className="text-[#6b7280] text-xs">{student.created_at ? format(new Date(student.created_at), 'dd MMM yy, hh:mm a') : ''}</p>
           </div>
+          {student.bag_issued && (
+            <div>
+              <p className="text-[#6b7280] text-xs">Bag Issued By</p>
+              <p className="text-white text-sm font-medium mt-0.5">{bagIssuerName || '—'}</p>
+              <p className="text-[#6b7280] text-xs">{student.bag_issued_at ? format(new Date(student.bag_issued_at), 'dd MMM yy, hh:mm a') : ''}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -88,9 +130,16 @@ export default function IssuerStudentDetail() {
             <div key={i.id} className="px-5 py-3 flex items-center gap-3">
               <BookOpen size={15} className="text-[#bd0a0a] flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">{i.books?.title}</p>
+                {(i.books?.exam_level||i.books?.unit||i.books?.part) ? (
+                  <>
+                    <p className="text-white text-sm font-semibold truncate">{[i.books?.exam_level,i.books?.unit,i.books?.part].filter(Boolean).join(' › ')}</p>
+                    <p className="text-[#6b7280] text-xs truncate">{i.books?.title}</p>
+                  </>
+                ) : (
+                  <p className="text-white text-sm font-medium truncate">{i.books?.title}</p>
+                )}
                 <p className="text-[#6b7280] text-xs mt-0.5">
-                  {i.books?.category} · {i.books?.medium} · by {i.users?.name} · {format(new Date(i.issued_at), 'dd MMM yy, hh:mm a')}
+                  {i.books?.category} · {i.books?.medium} · by {i.users?.name || '—'} · {format(new Date(i.issued_at), 'dd MMM yy, hh:mm a')}
                 </p>
               </div>
             </div>

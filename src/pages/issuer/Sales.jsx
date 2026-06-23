@@ -3,12 +3,13 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { Check, ShoppingCart } from 'lucide-react'
+import { Check, ShoppingCart, Package } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 
 export default function IssuerSales() {
   const { profile } = useAuthStore()
   const [books, setBooks] = useState([])
+  const [bundles, setBundles] = useState([])
   const [stockMap, setStockMap] = useState({})
   const [stockEntries, setStockEntries] = useState([])
   const [sales, setSales] = useState([])
@@ -18,18 +19,21 @@ export default function IssuerSales() {
   const [buyerName, setBuyerName] = useState('')
   const [buyerPhone, setBuyerPhone] = useState('')
   const [saleMedium, setSaleMedium] = useState('')
-  const [selectedBooks, setSelectedBooks] = useState([]) // [{id, qty, price}]
+  const [selectedBooks, setSelectedBooks] = useState([]) // [{id, qty}]
+  const [finalPrice, setFinalPrice] = useState('')
 
   useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
-    const [{ data: booksData }, { data: stockData }, { data: salesData }] = await Promise.all([
+    const [{ data: booksData }, { data: bundlesData }, { data: stockData }, { data: salesData }] = await Promise.all([
       supabase.from('books').select('*').eq('is_active', true).order('title'),
+      supabase.from('bundles').select('*, bundle_books(book_id)').eq('is_active', true),
       supabase.from('stock').select('id, book_id, available_qty, location'),
-      supabase.from('sales').select('*, books(title)')
+      supabase.from('sales').select('*, books(title, exam_level, unit, part)')
         .eq('sold_by', profile?.id).order('sold_at', { ascending: false }).limit(20)
     ])
     setBooks(booksData || [])
+    setBundles(bundlesData || [])
     setStockEntries(stockData || [])
     const map = {}
     for (const s of (stockData || [])) {
@@ -42,7 +46,7 @@ export default function IssuerSales() {
   function toggleBook(bookId) {
     setSelectedBooks(prev => {
       if (prev.find(b => b.id === bookId)) return prev.filter(b => b.id !== bookId)
-      return [...prev, { id: bookId, qty: 1, price: '' }]
+      return [...prev, { id: bookId, qty: 1 }]
     })
   }
 
@@ -50,7 +54,19 @@ export default function IssuerSales() {
     setSelectedBooks(prev => prev.map(b => b.id === bookId ? { ...b, [field]: value } : b))
   }
 
-  const total = selectedBooks.reduce((sum, b) => sum + (parseFloat(b.price) || 0) * (parseInt(b.qty) || 1), 0)
+  function selectBundle(bundle) {
+    const ids = bundle.bundle_books
+      .map(bb => bb.book_id)
+      .filter(id => {
+        const m = books.find(b => b.id === id)?.medium
+        return (m === saleMedium || m === 'both') && !selectedBooks.find(s => s.id === id)
+      })
+    if (ids.length === 0) { toast.error('All books in this bundle are already selected or wrong medium'); return }
+    setSelectedBooks(prev => [...prev, ...ids.map(id => ({ id, qty: 1 }))])
+    toast.success(`${ids.length} book(s) added from ${bundle.name}`)
+  }
+
+  const total = parseFloat(finalPrice) || 0
 
   async function handleSubmit() {
     if (!buyerName.trim()) { toast.error('Buyer name is required'); return }
@@ -65,14 +81,15 @@ export default function IssuerSales() {
   async function confirmSale() {
     setConfirmOpen(false)
     setLoading(true)
-    const saleRows = selectedBooks.map(b => ({
+    const now = new Date().toISOString()
+    const saleRows = selectedBooks.map((b, i) => ({
       buyer_name: buyerName.trim(),
       buyer_phone: buyerPhone.trim() || null,
       book_id: b.id,
       qty: parseInt(b.qty) || 1,
-      total_price: (parseFloat(b.price) || 0) * (parseInt(b.qty) || 1) || null,
+      total_price: i === 0 ? (parseFloat(finalPrice) || null) : null,
       sold_by: profile?.id,
-      sold_at: new Date().toISOString(),
+      sold_at: now,
       is_returned: false
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
@@ -83,7 +100,7 @@ export default function IssuerSales() {
     const summary = selectedBooks.map(b => `${books.find(bk => bk.id === b.id)?.title} x${b.qty}`).join(', ')
     logAction('SALE_RECORDED', `${buyerName.trim()} (${buyerPhone || 'no phone'}) — ${summary} — ₹${total.toFixed(0)}`)
     toast.success(`Sale recorded — ${selectedBooks.length} book(s) sold to ${buyerName}`)
-    setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setSelectedBooks([])
+    setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setSelectedBooks([]); setFinalPrice('')
     fetchData()
     setLoading(false)
   }
@@ -136,6 +153,29 @@ export default function IssuerSales() {
         </div>
       </div>
 
+      {/* Bundle Quick Select */}
+      {saleMedium && bundles.length > 0 && (
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
+          <p className="text-white font-semibold text-sm">Quick Select — Bundles</p>
+          <div className="flex flex-wrap gap-2">
+            {bundles.map(b => {
+              const count = b.bundle_books?.filter(bb => {
+                const m = books.find(bk => bk.id === bb.book_id)?.medium
+                return m === saleMedium || m === 'both'
+              }).length ?? 0
+              return (
+                <button key={b.id} onClick={() => selectBundle(b)}
+                  className="flex items-center gap-2 px-3 py-2 bg-[#12121f] border border-[#2a2a45] hover:border-[#f0a500] rounded-lg text-sm text-white transition-all">
+                  <Package size={14} className="text-[#f0a500]" />
+                  {b.name}
+                  <span className="text-[#6b7280] text-xs">({count})</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Book Selection */}
       {saleMedium && (
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
@@ -157,19 +197,11 @@ export default function IssuerSales() {
                   </span>
                 </label>
                 {sel && (
-                  <div className="grid grid-cols-2 gap-2 mt-1.5 px-1 pb-1">
-                    <div>
-                      <label className="text-[#9ca3af] text-xs mb-1 block">Qty</label>
-                      <input type="number" min="1" value={sel.qty}
-                        onChange={e => updateBook(b.id, 'qty', e.target.value)}
-                        className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-                    </div>
-                    <div>
-                      <label className="text-[#9ca3af] text-xs mb-1 block">Price per book (₹)</label>
-                      <input type="number" min="0" value={sel.price} placeholder="0"
-                        onChange={e => updateBook(b.id, 'price', e.target.value)}
-                        className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
-                    </div>
+                  <div className="mt-1.5 px-1 pb-1 w-32">
+                    <label className="text-[#9ca3af] text-xs mb-1 block">Qty</label>
+                    <input type="number" min="1" value={sel.qty}
+                      onChange={e => updateBook(b.id, 'qty', e.target.value)}
+                      className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
                   </div>
                 )}
               </div>
@@ -181,10 +213,18 @@ export default function IssuerSales() {
 
       {selectedBooks.length > 0 && (
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-white font-semibold text-sm">Total Amount</p>
-            <p className="text-[#f0a500] font-bold text-xl">₹{total.toFixed(0)}</p>
+          <div>
+            <label className="text-[#9ca3af] text-xs mb-1.5 block">Final Price (₹)</label>
+            <input type="number" min="0" value={finalPrice} placeholder="Enter total amount charged"
+              onChange={e => setFinalPrice(e.target.value)}
+              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#f0a500] placeholder-[#4b5563]" />
           </div>
+          {finalPrice && (
+            <div className="flex items-center justify-between">
+              <p className="text-[#9ca3af] text-sm">Total</p>
+              <p className="text-[#f0a500] font-bold text-xl">₹{parseFloat(finalPrice).toFixed(0)}</p>
+            </div>
+          )}
           <button onClick={handleSubmit} disabled={loading}
             className="w-full flex items-center justify-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] disabled:opacity-50 text-white font-semibold py-3 rounded-lg text-sm transition-all">
             <ShoppingCart size={16} /> Record Sale — {selectedBooks.length} Book(s)
@@ -202,7 +242,14 @@ export default function IssuerSales() {
             {sales.map(s => (
               <div key={s.id} className="px-5 py-3 flex items-center justify-between">
                 <div>
-                  <p className="text-white text-sm font-medium">{s.books?.title}</p>
+                  {(s.books?.exam_level||s.books?.unit||s.books?.part) ? (
+                    <>
+                      <p className="text-white text-sm font-semibold">{[s.books?.exam_level,s.books?.unit,s.books?.part].filter(Boolean).join(' › ')}</p>
+                      <p className="text-[#6b7280] text-xs truncate">{s.books?.title}</p>
+                    </>
+                  ) : (
+                    <p className="text-white text-sm font-medium">{s.books?.title}</p>
+                  )}
                   <p className="text-[#6b7280] text-xs">{s.buyer_name} · qty {s.qty}</p>
                 </div>
                 <div className="text-right">
@@ -231,14 +278,22 @@ export default function IssuerSales() {
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {selectedBooks.map(b => {
                   const book = books.find(bk => bk.id === b.id)
-                  const lineTotal = (parseFloat(b.price) || 0) * (parseInt(b.qty) || 1)
                   return (
                     <div key={b.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Check size={13} className="text-emerald-400 flex-shrink-0" />
-                        <span className="text-white text-sm">{book?.title}</span>
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          {(book?.exam_level||book?.unit||book?.part) ? (
+                            <>
+                              <p className="text-white text-sm font-semibold">{[book?.exam_level,book?.unit,book?.part].filter(Boolean).join(' › ')}</p>
+                              <p className="text-[#6b7280] text-xs truncate">{book?.title}</p>
+                            </>
+                          ) : (
+                            <p className="text-white text-sm">{book?.title}</p>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-[#9ca3af] text-sm flex-shrink-0">x{b.qty} · ₹{lineTotal}</span>
+                      <span className="text-[#9ca3af] text-sm flex-shrink-0">x{b.qty}</span>
                     </div>
                   )
                 })}

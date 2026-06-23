@@ -4,22 +4,53 @@ import { format } from 'date-fns'
 import { Search } from 'lucide-react'
 
 const ACTION_COLORS = {
+  // Students
   STUDENT_CREATED: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   STUDENT_UPDATED: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  STUDENT_ACTIVATED: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  STUDENT_DEACTIVATED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  BULK_STUDENT_UPLOAD: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  // Books & Issuances
   BOOKS_ISSUED: 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30',
   ISSUANCE_REVERSED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  SALE_RECORDED: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  SALE_RETURNED: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  // Bag
+  BAG_ISSUED: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30',
+  BAG_REVOKED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  // Books catalog
   BOOK_CREATED: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
   BOOK_UPDATED: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  BOOK_DEACTIVATED: 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]',
   BOOK_ACTIVATED: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+  BOOK_DEACTIVATED: 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]',
+  // Bundles
   BUNDLE_CREATED: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30',
+  BUNDLE_UPDATED: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30',
+  BUNDLE_ACTIVATED: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30',
+  BUNDLE_DEACTIVATED: 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]',
+  // Batches
+  BATCH_CREATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  BATCH_UPDATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  BATCH_ACTIVATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  BATCH_DEACTIVATED: 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]',
+  // Courses
+  COURSE_CREATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  COURSE_UPDATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  COURSE_ACTIVATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  COURSE_DEACTIVATED: 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]',
+  // Sales
+  SALE_RECORDED: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  SALE_RETURNED: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  // Allotments
   ALLOTMENT_CREATED: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+  ALLOTMENT_UPDATED: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+  ALLOTMENT_REVERSED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  // Stock
   STOCK_CREATED: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   STOCK_UPDATED: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
-  BATCH_CREATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
-  COURSE_CREATED: 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  // Users
+  USER_CREATED: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
+  USER_ACTIVATED: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  USER_DEACTIVATED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  USER_PASSWORD_RESET: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
 }
 
 export default function AuditLog() {

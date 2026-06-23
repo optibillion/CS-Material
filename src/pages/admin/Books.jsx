@@ -136,6 +136,7 @@ function BundlePromptModal({ open, onClose, onConfirm, bundles, bookTitle }) {
 export default function Books() {
   const [books, setBooks] = useState([])
   const [issuanceCounts, setIssuanceCounts] = useState({})
+  const [stockMap, setStockMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterCat, setFilterCat] = useState('all')
@@ -149,14 +150,18 @@ export default function Books() {
 
   async function fetchBooks() {
     setLoading(true)
-    const [{ data: b }, { data: ic }] = await Promise.all([
+    const [{ data: b }, { data: ic }, { data: st }] = await Promise.all([
       supabase.from('books').select('*').order('created_at', { ascending: false }),
-      supabase.from('issuances').select('book_id').eq('is_reversed', false)
+      supabase.from('issuances').select('book_id').eq('is_reversed', false),
+      supabase.from('stock').select('book_id, available_qty, total_qty, low_stock_threshold'),
     ])
     const counts = {}
     for (const r of (ic || [])) counts[r.book_id] = (counts[r.book_id] || 0) + 1
+    const sm = {}
+    for (const s of (st || [])) sm[s.book_id] = s
     setBooks(b || [])
     setIssuanceCounts(counts)
+    setStockMap(sm)
     setLoading(false)
   }
 
@@ -288,24 +293,34 @@ export default function Books() {
         <table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-[#2a2a45]">
-              {['TITLE','SUBJECT','CATEGORY','MEDIUM','ISSUED','STATUS','ACTIONS'].map(h=>(
+              {['TITLE','SUBJECT','CATEGORY','MEDIUM','ISSUED','STOCK','STATUS','ACTIONS'].map(h=>(
                 <th key={h} className="text-left text-[#6b7280] text-xs font-medium px-5 py-3">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#2a2a45]">
             {loading ? [...Array(5)].map((_,i)=>(
-              <tr key={i}>{[...Array(7)].map((_,j)=>(
+              <tr key={i}>{[...Array(8)].map((_,j)=>(
                 <td key={j} className="px-5 py-3"><div className="h-4 bg-[#2a2a45] rounded animate-pulse"/></td>
               ))}</tr>
             )) : filtered.length===0 ? (
-              <tr><td colSpan={7} className="text-center text-[#6b7280] py-10 text-sm">No books found</td></tr>
-            ) : filtered.map(book=>(
+              <tr><td colSpan={8} className="text-center text-[#6b7280] py-10 text-sm">No books found</td></tr>
+            ) : filtered.map(book=>{
+              const stock = stockMap[book.id]
+              const isLow = stock && stock.available_qty <= stock.low_stock_threshold
+              const isOut = stock && stock.available_qty === 0
+              return (
               <tr key={book.id} className={`hover:bg-[#12121f] transition-colors ${!book.is_active?'opacity-50':''}`}>
                 <td className="px-5 py-3"><div className="flex items-center gap-2"><BookOpen size={15} className="text-[#bd0a0a] flex-shrink-0"/>
                   <div>
-                    {(book.exam_level||book.unit||book.part) && <p className="text-[#6b7280] text-xs">{[book.exam_level,book.unit,book.part].filter(Boolean).join(' › ')}</p>}
-                    <span className="text-white text-sm font-medium">{book.title}</span>
+                    {(book.exam_level||book.unit||book.part) ? (
+                      <>
+                        <p className="text-white text-sm font-semibold">{[book.exam_level,book.unit,book.part].filter(Boolean).join(' › ')}</p>
+                        <p className="text-[#6b7280] text-xs truncate">{book.title}</p>
+                      </>
+                    ) : (
+                      <span className="text-white text-sm font-medium">{book.title}</span>
+                    )}
                   </div>
                 </div></td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{book.subject||'—'}</td>
@@ -315,13 +330,23 @@ export default function Books() {
                   <span className="text-sm font-semibold text-[#f0a500]">{issuanceCounts[book.id] || 0}</span>
                   <span className="text-[#6b7280] text-xs ml-1">copies</span>
                 </td>
+                <td className="px-5 py-3">
+                  {stock
+                    ? <div>
+                        <span className={`text-sm font-semibold ${isOut ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-emerald-400'}`}>{stock.available_qty}</span>
+                        <span className="text-[#6b7280] text-xs">/{stock.total_qty}</span>
+                        {isOut && <p className="text-red-400 text-xs">Out of stock</p>}
+                        {isLow && !isOut && <p className="text-orange-400 text-xs">Low stock</p>}
+                      </div>
+                    : <span className="text-[#6b7280] text-xs">—</span>}
+                </td>
                 <td className="px-5 py-3"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${book.is_active?'bg-emerald-500/20 text-emerald-400 border-emerald-500/30':'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>{book.is_active?'Active':'Inactive'}</span></td>
                 <td className="px-5 py-3"><div className="flex items-center gap-2">
                   <button onClick={()=>{setEditing(book);setModalOpen(true)}} className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">Edit</button>
                   <button onClick={()=>toggleActive(book)} className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all flex items-center gap-1">{book.is_active?<EyeOff size={12}/>:<Eye size={12}/>}{book.is_active?'Deactivate':'Activate'}</button>
                 </div></td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>
@@ -332,12 +357,22 @@ export default function Books() {
           <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 animate-pulse h-24"/>
         )) : filtered.length===0 ? (
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 text-center text-[#6b7280] text-sm">No books found</div>
-        ) : filtered.map(book=>(
+        ) : filtered.map(book=>{
+          const stock = stockMap[book.id]
+          const isLow = stock && stock.available_qty <= stock.low_stock_threshold
+          const isOut = stock && stock.available_qty === 0
+          return (
           <div key={book.id} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${!book.is_active?'opacity-50':''}`}>
             <div className="flex items-start justify-between mb-1">
               <div className="flex-1 min-w-0 mr-2">
-                {(book.exam_level||book.unit||book.part) && <p className="text-[#6b7280] text-xs mb-0.5">{[book.exam_level,book.unit,book.part].filter(Boolean).join(' › ')}</p>}
-                <p className="text-white font-semibold text-sm">{book.title}</p>
+                {(book.exam_level||book.unit||book.part) ? (
+                  <>
+                    <p className="text-white font-semibold text-sm">{[book.exam_level,book.unit,book.part].filter(Boolean).join(' › ')}</p>
+                    <p className="text-[#6b7280] text-xs truncate">{book.title}</p>
+                  </>
+                ) : (
+                  <p className="text-white font-semibold text-sm">{book.title}</p>
+                )}
               </div>
               <Badge label={book.medium}/>
             </div>
@@ -345,16 +380,32 @@ export default function Books() {
               <Badge label={book.category}/>
               {book.subject&&<span className="text-xs text-[#6b7280]">{book.subject}</span>}
             </div>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[#6b7280] text-xs">Issued (active copies)</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[#6b7280] text-xs">Issued</span>
               <span className="text-[#f0a500] text-sm font-bold">{issuanceCounts[book.id] || 0}</span>
             </div>
+            {stock && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[#6b7280] text-xs">Stock</span>
+                  <span className={`text-sm font-bold ${isOut ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-emerald-400'}`}>
+                    {stock.available_qty}<span className="text-[#6b7280] text-xs font-normal">/{stock.total_qty}</span>
+                  </span>
+                </div>
+                <div className="w-full bg-[#2a2a45] rounded-full h-1.5">
+                  <div className={`h-1.5 rounded-full transition-all ${isOut ? 'bg-red-500' : isLow ? 'bg-orange-400' : 'bg-emerald-400'}`}
+                    style={{ width: stock.total_qty > 0 ? `${Math.round((stock.available_qty / stock.total_qty) * 100)}%` : '0%' }} />
+                </div>
+                {isOut && <p className="text-red-400 text-xs mt-0.5">Out of stock</p>}
+                {isLow && !isOut && <p className="text-orange-400 text-xs mt-0.5">Low stock</p>}
+              </div>
+            )}
             <div className="flex gap-2">
               <button onClick={()=>{setEditing(book);setModalOpen(true)}} className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">Edit</button>
               <button onClick={()=>toggleActive(book)} className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">{book.is_active?'Deactivate':'Activate'}</button>
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       <BookModal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} initial={editing} />

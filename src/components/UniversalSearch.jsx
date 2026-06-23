@@ -31,7 +31,7 @@ export default function UniversalSearch() {
     timeout.current = setTimeout(async () => {
       setLoading(true)
       const [{ data: students }, { data: books }, { data: bundles }] = await Promise.all([
-        supabase.from('students').select('id, name, student_id, phone, medium, courses(name), bag_issued')
+        supabase.from('students').select('id, name, student_id, phone, medium, batches(name), bag_issued')
           .or(`name.ilike.%${q}%,student_id.ilike.%${q}%,phone.ilike.%${q}%`).limit(5),
         supabase.from('books').select('id, title, category, medium').eq('is_active', true)
           .ilike('title', `%${q}%`).limit(4),
@@ -91,7 +91,7 @@ export default function UniversalSearch() {
                         <div className="flex-1 min-w-0">
                           <p className="text-white text-sm font-medium">{s.name}</p>
                           <p className="text-[#6b7280] text-xs">
-                            {s.phone} · {s.courses?.name || 'No course'}
+                            {s.phone} · {s.batches?.name || 'No batch'}
                             {s.bag_issued && <span className="ml-2 text-[#f0a500]">🎒 Bag issued</span>}
                           </p>
                         </div>

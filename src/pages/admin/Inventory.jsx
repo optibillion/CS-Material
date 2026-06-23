@@ -1,13 +1,23 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
-import { Plus, Search, AlertTriangle, History, Package, X } from 'lucide-react'
+import { Plus, Search, AlertTriangle, History, Package, X, BookOpen } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 import { format } from 'date-fns'
+import { useNavigate } from 'react-router-dom'
 
-function Modal({ open, onClose, onSave, books, editing }) {
+const MEDIUM_LABELS = { hindi: 'Hindi', english: 'English', both: 'Both' }
+const MEDIUM_COLORS = { hindi: 'bg-orange-500/20 text-orange-400 border-orange-500/30', english: 'bg-blue-500/20 text-blue-400 border-blue-500/30', both: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }
+const CAT_COLORS = { booklet: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', book: 'bg-sky-500/20 text-sky-400 border-sky-500/30', notes: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' }
+
+function Modal({ open, onClose, onSave, books, editing, allBooks, onGoToBooks }) {
   const [form, setForm] = useState({ book_id: '', location: 'Main Campus', total_qty: '', available_qty: '', low_stock_threshold: '10' })
+  const [bookSearch, setBookSearch] = useState('')
+  const [filterMedium, setFilterMedium] = useState('')
+  const [filterCat, setFilterCat] = useState('')
+  const [filterExam, setFilterExam] = useState('')
+
   useEffect(() => {
     if (open) {
       if (editing) {
@@ -20,63 +30,163 @@ function Modal({ open, onClose, onSave, books, editing }) {
         })
       } else {
         setForm({ book_id: '', location: 'Main Campus', total_qty: '', available_qty: '', low_stock_threshold: '10' })
+        setBookSearch(''); setFilterMedium(''); setFilterCat(''); setFilterExam('')
       }
     }
   }, [open, editing])
+
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
+
+  const examOptions = [...new Set(books.map(b => b.exam_level).filter(Boolean))].sort()
+
+  const visibleBooks = books.filter(b => {
+    const q = bookSearch.toLowerCase()
+    const matchQ = !q || [b.title, b.exam_level, b.unit, b.part, b.subject].some(f => f?.toLowerCase().includes(q))
+    return matchQ &&
+      (!filterMedium || b.medium === filterMedium) &&
+      (!filterCat || b.category === filterCat) &&
+      (!filterExam || b.exam_level === filterExam)
+  })
+
   async function handleSave() {
     if (!editing && !form.book_id) { toast.error('Select a book'); return }
     await onSave(form); onClose()
   }
+
   if (!open) return null
+  const editBook = editing ? allBooks.find(b => b.id === editing.book_id) : null
+
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
-      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
-        <h2 className="text-white font-semibold text-lg mb-5">{editing ? 'Edit Stock' : 'Add Stock Entry'}</h2>
-        <div className="space-y-4">
-          {!editing && (
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-0 sm:px-4">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a45] flex-shrink-0">
+          <h2 className="text-white font-semibold text-base">{editing ? 'Edit Stock' : 'Add Stock Entry'}</h2>
+          <button onClick={onClose} className="text-[#6b7280] hover:text-white"><X size={18} /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
+          {/* Book section */}
+          {editing ? (
             <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Book *</label>
-              <select value={form.book_id} onChange={e => set('book_id', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
-                <option value="">Select book</option>
-                {books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-              </select>
+              <label className="text-[#9ca3af] text-xs uppercase tracking-wide mb-2 block">Book</label>
+              <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg px-4 py-3">
+                <p className="text-white text-sm font-medium">{editBook?.title || '—'}</p>
+                <div className="flex gap-2 flex-wrap mt-1.5">
+                  {editBook?.exam_level && <span className="text-xs text-[#9ca3af]">{editBook.exam_level}</span>}
+                  {editBook?.unit && <span className="text-xs text-[#6b7280]">· {editBook.unit}</span>}
+                  {editBook?.part && <span className="text-xs text-[#6b7280]">· {editBook.part}</span>}
+                  {editBook?.medium && <span className={`text-xs px-1.5 py-0.5 rounded border ${MEDIUM_COLORS[editBook.medium] || ''}`}>{MEDIUM_LABELS[editBook.medium]}</span>}
+                  {editBook?.category && <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${CAT_COLORS[editBook.category] || ''}`}>{editBook.category}</span>}
+                </div>
+              </div>
+            </div>
+          ) : books.length === 0 ? (
+            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg px-4 py-5 text-center">
+              <BookOpen size={22} className="text-[#6b7280] mx-auto mb-2" />
+              <p className="text-[#9ca3af] text-sm mb-1">All books already have stock entries.</p>
+              <p className="text-[#6b7280] text-xs mb-3">To track a new book, add it in the Books section first, then come back here.</p>
+              <button type="button" onClick={onGoToBooks}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white transition-all">
+                Go to Books →
+              </button>
+            </div>
+          ) : (
+            <div>
+              <label className="text-[#9ca3af] text-xs uppercase tracking-wide mb-2 block">Select Book *</label>
+              {/* Search */}
+              <div className="relative mb-2">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+                <input value={bookSearch} onChange={e => setBookSearch(e.target.value)}
+                  placeholder="Search title, exam, unit..."
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+              </div>
+              {/* Filter chips */}
+              <div className="flex gap-1.5 flex-wrap mb-2">
+                {['hindi','english','both'].map(m => (
+                  <button key={m} type="button" onClick={() => setFilterMedium(f => f === m ? '' : m)}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${filterMedium === m ? MEDIUM_COLORS[m] : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {MEDIUM_LABELS[m]}
+                  </button>
+                ))}
+                {['booklet','book','notes'].map(c => (
+                  <button key={c} type="button" onClick={() => setFilterCat(f => f === c ? '' : c)}
+                    className={`text-xs px-2 py-0.5 rounded-full border capitalize transition-all ${filterCat === c ? CAT_COLORS[c] : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {c}
+                  </button>
+                ))}
+                {examOptions.map(e => (
+                  <button key={e} type="button" onClick={() => setFilterExam(f => f === e ? '' : e)}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${filterExam === e ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+              {/* Book list */}
+              <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                {visibleBooks.length === 0 ? (
+                  <p className="text-[#6b7280] text-xs text-center py-4">No books match your filters</p>
+                ) : visibleBooks.map(b => (
+                  <button key={b.id} type="button" onClick={() => set('book_id', b.id)}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${form.book_id === b.id ? 'border-[#bd0a0a] bg-[#bd0a0a]/10' : 'border-[#2a2a45] bg-[#12121f] hover:border-[#3a3a55]'}`}>
+                    <p className="text-white text-sm font-medium leading-snug">{b.title}</p>
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                      {b.exam_level && <span className="text-[#9ca3af] text-xs">{b.exam_level}</span>}
+                      {b.unit && <span className="text-[#6b7280] text-xs">· {b.unit}</span>}
+                      {b.part && <span className="text-[#6b7280] text-xs">· {b.part}</span>}
+                      {b.medium && <span className={`text-xs px-1.5 py-0.5 rounded border ${MEDIUM_COLORS[b.medium] || ''}`}>{MEDIUM_LABELS[b.medium]}</span>}
+                      {b.category && <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${CAT_COLORS[b.category] || ''}`}>{b.category}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[#6b7280] text-xs mt-2">Only books without a stock entry are shown. To add a new book, go to the Books page first.</p>
             </div>
           )}
-          {editing && (
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Book</label>
-              <p className="text-white text-sm px-3 py-2.5 bg-[#12121f] border border-[#2a2a45] rounded-lg">{books.find(b => b.id === editing.book_id)?.title || '—'}</p>
-            </div>
-          )}
+
+          {/* Qty fields */}
           <div>
-            <label className="text-[#9ca3af] text-sm mb-1.5 block">Location</label>
+            <label className="text-[#9ca3af] text-xs uppercase tracking-wide mb-2 block">Location</label>
             <input value={form.location} onChange={e => set('location', e.target.value)}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Total Qty</label>
-              <input type="number" value={form.total_qty} onChange={e => set('total_qty', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+
+          {editing ? (
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-1.5 block">Total Qty</label>
+                <input type="number" min="0" value={form.total_qty} onChange={e => set('total_qty', e.target.value)}
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+              </div>
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-1.5 block">Available <span className="text-[#6b7280]">(correct if needed)</span></label>
+                <input type="number" min="0" value={form.available_qty} onChange={e => set('available_qty', e.target.value)}
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+              </div>
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-1.5 block">Alert At</label>
+                <input type="number" min="0" value={form.low_stock_threshold} onChange={e => set('low_stock_threshold', e.target.value)}
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+              </div>
             </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Available</label>
-              <input type="number" value={form.available_qty} onChange={e => set('available_qty', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-1.5 block">Total Qty</label>
+                <input type="number" min="0" value={form.total_qty}
+                  onChange={e => { set('total_qty', e.target.value); set('available_qty', e.target.value) }}
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+                <p className="text-[#6b7280] text-xs mt-1">Available will be set to the same amount</p>
+              </div>
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-1.5 block">Alert At <span className="text-[#6b7280]">(warn below this)</span></label>
+                <input type="number" min="0" value={form.low_stock_threshold} onChange={e => set('low_stock_threshold', e.target.value)}
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+              </div>
             </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">
-                Alert At
-                <span className="text-[#6b7280] text-xs block">warn below this</span>
-              </label>
-              <input type="number" value={form.low_stock_threshold} onChange={e => set('low_stock_threshold', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-            </div>
-          </div>
+          )}
         </div>
-        <div className="flex gap-3 mt-6">
+
+        <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45] flex-shrink-0">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
           <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">{editing ? 'Save Changes' : 'Add Stock'}</button>
         </div>
@@ -180,6 +290,7 @@ const TYPE_STYLES = {
 }
 
 export default function Inventory() {
+  const navigate = useNavigate()
   const [tab, setTab] = useState('stock')
   const [stock, setStock] = useState([])
   const [books, setBooks] = useState([])
@@ -351,12 +462,20 @@ export default function Inventory() {
                       <td className="px-5 py-3 text-white text-sm font-medium">{s.books?.title}<p className="text-[#6b7280] text-xs font-normal">tap to view history</p></td>
                       <td className="px-5 py-3 text-[#9ca3af] text-sm">{s.location}</td>
                       <td className="px-5 py-3 text-white text-sm">{s.total_qty}</td>
-                      <td className="px-5 py-3 text-white text-sm font-semibold">{s.available_qty}</td>
+                      <td className="px-5 py-3">
+                        <span className={`text-sm font-semibold ${s.available_qty === 0 ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-white'}`}>{s.available_qty}</span>
+                        {s.total_qty > 0 && (
+                          <div className="w-16 bg-[#2a2a45] rounded-full h-1 mt-1">
+                            <div className={`h-1 rounded-full ${s.available_qty === 0 ? 'bg-red-500' : isLow ? 'bg-orange-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${Math.round((s.available_qty / s.total_qty) * 100)}%` }} />
+                          </div>
+                        )}
+                      </td>
                       <td className="px-5 py-3 text-[#9ca3af] text-sm">{s.low_stock_threshold}</td>
                       <td className="px-5 py-3">
                         {isLow ? (
                           <span className="flex items-center gap-1 text-xs text-red-400 font-medium">
-                            <AlertTriangle size={12} /> Low Stock
+                            <AlertTriangle size={12} /> {s.available_qty === 0 ? 'Out of stock' : 'Low Stock'}
                           </span>
                         ) : (
                           <span className="text-xs text-emerald-400 font-medium">OK</span>
@@ -394,20 +513,29 @@ export default function Inventory() {
                       <span className="text-xs text-emerald-400">OK</span>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div className="grid grid-cols-3 gap-2 mb-2">
                     <div>
                       <p className="text-[#6b7280] text-xs">Total</p>
                       <p className="text-white text-sm font-medium">{s.total_qty}</p>
                     </div>
                     <div>
                       <p className="text-[#6b7280] text-xs">Available</p>
-                      <p className={`text-sm font-semibold ${isLow ? 'text-red-400' : 'text-white'}`}>{s.available_qty}</p>
+                      <p className={`text-sm font-semibold ${s.available_qty === 0 ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-emerald-400'}`}>{s.available_qty}</p>
                     </div>
                     <div>
                       <p className="text-[#6b7280] text-xs">Alert at</p>
                       <p className="text-white text-sm">{s.low_stock_threshold}</p>
                     </div>
                   </div>
+                  {s.total_qty > 0 && (
+                    <div className="mb-2">
+                      <div className="w-full bg-[#12121f] rounded-full h-2">
+                        <div className={`h-2 rounded-full transition-all ${s.available_qty === 0 ? 'bg-red-500' : isLow ? 'bg-orange-400' : 'bg-emerald-400'}`}
+                          style={{ width: `${Math.round((s.available_qty / s.total_qty) * 100)}%` }} />
+                      </div>
+                      <p className="text-[#6b7280] text-xs mt-0.5">{s.total_qty > 0 ? Math.round((s.available_qty / s.total_qty) * 100) : 0}% available</p>
+                    </div>
+                  )}
                   <p className="text-[#6b7280] text-xs mb-3">{s.location}</p>
                   <button onClick={e => { e.stopPropagation(); setEditing(s); setModalOpen(true) }}
                     className="w-full text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
@@ -499,7 +627,15 @@ export default function Inventory() {
         </>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} onSave={handleSave} books={books} editing={editing} />
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={handleSave}
+        books={editing ? books : books.filter(b => !stock.some(s => s.book_id === b.id))}
+        allBooks={books}
+        editing={editing}
+        onGoToBooks={() => { setModalOpen(false); navigate('/admin/books') }}
+      />
       <BookHistoryModal
         open={!!historyBook}
         onClose={() => setHistoryBook(null)}

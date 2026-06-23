@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
+import { logAction } from '../../lib/audit'
 
 const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-users`
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -138,7 +139,9 @@ async function handleCreate(form) {
     role: form.role
   })
   if (!result.success) { toast.error(result.message || 'Failed to create user'); return }
-  toast.success('User created'); fetchUsers()
+  toast.success('User created')
+  logAction('USER_CREATED', `${form.name} (@${form.username}) — role: ${form.role}`)
+  fetchUsers()
 }
 
 async function handleReset(password) {
@@ -150,6 +153,7 @@ async function handleReset(password) {
   })
   if (!result.success) { toast.error(result.message || 'Failed to reset'); return }
   toast.success('Password reset successfully')
+  logAction('USER_PASSWORD_RESET', `${resetTarget.name} (@${resetTarget.username})`)
   setResetTarget(null)
   fetchUsers()
 }
@@ -163,6 +167,7 @@ async function toggleActive(user) {
   })
   if (!result.success) { toast.error(result.message || 'Failed'); return }
   toast.success(user.is_active ? 'User deactivated' : 'User activated')
+  logAction(user.is_active ? 'USER_DEACTIVATED' : 'USER_ACTIVATED', `${user.name} (@${user.username}) — role: ${user.role}`)
   fetchUsers()
 }
 
