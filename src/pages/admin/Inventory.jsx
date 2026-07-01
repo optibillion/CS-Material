@@ -204,7 +204,7 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
     setLoading(true)
     Promise.all([
       supabase.from('issuances')
-        .select('id, issued_at, is_reversed, students(name, student_id), users!issuances_issued_by_fkey(name)')
+        .select('id, issued_at, is_reversed, is_previous_issuance, students(name, student_id), users!issuances_issued_by_fkey(name)')
         .eq('book_id', bookId).order('issued_at', { ascending: false }),
       supabase.from('sales')
         .select('id, sold_at, qty, buyer_name, buyer_phone, is_returned, users!sales_sold_by_fkey(name)')
@@ -215,7 +215,7 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
     ]).then(([{ data: iss }, { data: sal }, { data: all }]) => {
       const merged = [
         ...(iss || []).map(i => ({
-          key: `i-${i.id}`, type: 'ISSUANCE',
+          key: `i-${i.id}`, type: i.is_previous_issuance ? 'PREV_ISSUANCE' : 'ISSUANCE',
           to: `${i.students?.name || '—'} (${i.students?.student_id || ''})`,
           qty: 1, by: i.users?.name || '—',
           date: i.issued_at, voided: i.is_reversed
@@ -284,9 +284,10 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
 }
 
 const TYPE_STYLES = {
-  ISSUANCE:  { label: 'Issuance',  cls: 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' },
-  SALE:      { label: 'Sale',      cls: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
-  ALLOTMENT: { label: 'Allotment', cls: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+  ISSUANCE:      { label: 'Issuance',      cls: 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' },
+  PREV_ISSUANCE: { label: 'Prev. Issuance', cls: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' },
+  SALE:          { label: 'Sale',          cls: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+  ALLOTMENT:     { label: 'Allotment',     cls: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
 }
 
 export default function Inventory() {
@@ -329,7 +330,7 @@ export default function Inventory() {
     setHistLoading(true)
     const [{ data: iss }, { data: sal }, { data: all }] = await Promise.all([
       supabase.from('issuances')
-        .select('id, issued_at, is_reversed, books(title), students(name, student_id), users!issuances_issued_by_fkey(name)')
+        .select('id, issued_at, is_reversed, is_previous_issuance, books(title), students(name, student_id), users!issuances_issued_by_fkey(name)')
         .order('issued_at', { ascending: false }).limit(500),
       supabase.from('sales')
         .select('id, sold_at, qty, buyer_name, buyer_phone, is_returned, books(title), users!sales_sold_by_fkey(name)')
@@ -340,7 +341,7 @@ export default function Inventory() {
     ])
     const merged = [
       ...(iss || []).map(i => ({
-        key: `i-${i.id}`, type: 'ISSUANCE',
+        key: `i-${i.id}`, type: i.is_previous_issuance ? 'PREV_ISSUANCE' : 'ISSUANCE',
         book: i.books?.title || '—',
         to: `${i.students?.name || '—'} (${i.students?.student_id || ''})`,
         qty: 1, by: i.users?.name || '—',

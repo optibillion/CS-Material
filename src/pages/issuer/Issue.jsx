@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase, generateStudentId, adjustStock } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Search, Package, AlertTriangle, Check, UserPlus, Printer, Languages, ShoppingBag } from 'lucide-react'
+import { Search, Package, AlertTriangle, Check, UserPlus, Printer, Languages, ShoppingBag, History } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
 
@@ -137,7 +137,8 @@ export default function Issue() {
   const [books, setBooks] = useState([])
   const [bundles, setBundles] = useState([])
   const [batches, setBatches] = useState([])
-  const [selectedBooks, setSelectedBooks] = useState([])
+  const [selectedRegularBooks, setSelectedRegularBooks] = useState([])
+  const [selectedPreviousBooks, setSelectedPreviousBooks] = useState([])
   const [loading, setLoading] = useState(false)
   const [creating, setCreating] = useState(false)
   const [initialLoading, setInitialLoading] = useState(true)
@@ -145,6 +146,7 @@ export default function Issue() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
+  const [issuanceMode, setIssuanceMode] = useState('regular')
   const searchTimeout = useRef(null)
 
   useEffect(() => {
@@ -188,7 +190,9 @@ export default function Issue() {
     setSearchResults([])
     setSearchQ(s.name)
     setSearched(false)
-    setSelectedBooks([])
+    setSelectedRegularBooks([])
+    setSelectedPreviousBooks([])
+    setIssuanceMode('regular')
     const { data } = await supabase.from('issuances')
       .select('book_id').eq('student_id', s.id).eq('is_reversed', false)
     setStudentIssuances(data?.map(i => i.book_id) || [])
@@ -237,11 +241,14 @@ export default function Issue() {
   }
 
   function toggleBook(bookId) {
-    if (studentIssuances.includes(bookId)) {
-      toast.error('Already issued to this student')
-      return
+    if (studentIssuances.includes(bookId)) { toast.error('Already issued to this student'); return }
+    if (issuanceMode === 'regular') {
+      if (selectedPreviousBooks.includes(bookId)) { toast.error('Already selected as Previous Issue — remove it there first'); return }
+      setSelectedRegularBooks(prev => prev.includes(bookId) ? prev.filter(b => b !== bookId) : [...prev, bookId])
+    } else {
+      if (selectedRegularBooks.includes(bookId)) { toast.error('Already selected as Regular Issue — remove it there first'); return }
+      setSelectedPreviousBooks(prev => prev.includes(bookId) ? prev.filter(b => b !== bookId) : [...prev, bookId])
     }
-    setSelectedBooks(prev => prev.includes(bookId) ? prev.filter(b => b !== bookId) : [...prev, bookId])
   }
 
   function selectBundle(bundle) {
@@ -249,52 +256,52 @@ export default function Issue() {
     const mediumIds = selectedStudent?.medium
       ? allIds.filter(id => { const m = books.find(b => b.id === id)?.medium; return m === selectedStudent.medium || m === 'both' })
       : allIds
-    const ids = mediumIds.filter(id => !studentIssuances.includes(id))
-    const alreadyIssued = mediumIds.length - ids.length
-    if (alreadyIssued > 0) toast.error(`${alreadyIssued} book(s) already issued — skipped`)
+    const blocked = issuanceMode === 'regular'
+      ? [...studentIssuances, ...selectedPreviousBooks]
+      : [...studentIssuances, ...selectedRegularBooks]
+    const ids = mediumIds.filter(id => !blocked.includes(id))
+    const skipped = mediumIds.length - ids.length
+    if (skipped > 0) toast.error(`${skipped} book(s) already issued or selected — skipped`)
     if (ids.length === 0) return
-    setSelectedBooks(prev => [...new Set([...prev, ...ids])])
+    if (issuanceMode === 'regular') setSelectedRegularBooks(prev => [...new Set([...prev, ...ids])])
+    else setSelectedPreviousBooks(prev => [...new Set([...prev, ...ids])])
     toast.success(`${ids.length} book(s) added`)
   }
 
-  async function handleIssue() {
-    if (!selectedStudent || selectedBooks.length === 0) { toast.error('Select student and books'); return }
+  async function handleCombinedIssue() {
+    if (!selectedStudent || (selectedRegularBooks.length === 0 && selectedPreviousBooks.length === 0)) {
+      toast.error('Select at least one book'); return
+    }
     setLoading(true)
     const { data: freshIssuances } = await supabase.from('issuances')
       .select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
     const alreadyIssuedIds = freshIssuances?.map(i => i.book_id) || []
-    const booksToIssue = [...new Set(selectedBooks)].filter(id => !alreadyIssuedIds.includes(id))
-    const skipped = selectedBooks.length - booksToIssue.length
-    if (booksToIssue.length === 0) {
+    const regularToIssue = [...new Set(selectedRegularBooks)].filter(id => !alreadyIssuedIds.includes(id))
+    const previousToIssue = [...new Set(selectedPreviousBooks)].filter(id => !alreadyIssuedIds.includes(id))
+    if (regularToIssue.length === 0 && previousToIssue.length === 0) {
       toast.error('All selected books are already issued to this student')
       setStudentIssuances(alreadyIssuedIds)
-      setSelectedBooks([])
-      setLoading(false)
-      return
+      setSelectedRegularBooks([]); setSelectedPreviousBooks([])
+      setLoading(false); return
     }
-    if (skipped > 0) {
-      setStudentIssuances(alreadyIssuedIds)
-      toast.error(`${skipped} book(s) already issued — skipped`)
-    }
-    const rows = booksToIssue.map(book_id => ({
-      student_id: selectedStudent.id,
-      book_id,
-      issued_by: profile?.id,
-      issued_at: new Date().toISOString(),
-      is_reversed: false
-    }))
+    const now = new Date().toISOString()
+    const rows = [
+      ...regularToIssue.map(book_id => ({ student_id: selectedStudent.id, book_id, issued_by: profile?.id, issued_at: now, is_reversed: false, is_previous_issuance: false })),
+      ...previousToIssue.map(book_id => ({ student_id: selectedStudent.id, book_id, issued_by: profile?.id, issued_at: now, is_reversed: false, is_previous_issuance: true })),
+    ]
     const { error } = await supabase.from('issuances').insert(rows)
-    if (error) { toast.error('Failed to issue'); setLoading(false); return }
-    await Promise.all(booksToIssue.map(bookId => adjustStock(bookId, -1)))
-    toast.success(`✓ ${booksToIssue.length} book(s) issued to ${selectedStudent.name}`)
-    const issuedIds = [...booksToIssue]
-    const bookNames = booksToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')
-    logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${booksToIssue.length} book(s): ${bookNames}`)
-    setSelectedBooks([])
-    const { data } = await supabase.from('issuances')
-      .select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
+    if (error) { toast.error('Failed to record issuances'); setLoading(false); return }
+    await Promise.all(regularToIssue.map(bookId => adjustStock(bookId, -1)))
+    const total = regularToIssue.length + previousToIssue.length
+    toast.success(`✓ ${total} book(s) recorded for ${selectedStudent.name}`)
+    if (regularToIssue.length > 0)
+      logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${regularToIssue.length} book(s): ${regularToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')}`)
+    if (previousToIssue.length > 0)
+      logAction('PREVIOUS_ISSUANCE', `${selectedStudent.name} (${selectedStudent.student_id}) — ${previousToIssue.length} book(s): ${previousToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')}`)
+    setSelectedRegularBooks([]); setSelectedPreviousBooks([])
+    const { data } = await supabase.from('issuances').select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
     setStudentIssuances(data?.map(i => i.book_id) || [])
-    setLastIssued({ student: selectedStudent, bookIds: issuedIds })
+    setLastIssued({ student: selectedStudent, regularIds: regularToIssue, previousIds: previousToIssue })
     setLoading(false)
   }
 
@@ -348,11 +355,13 @@ export default function Issue() {
     setSearchQ('')
     setSearchResults([])
     setSearched(false)
-    setSelectedBooks([])
+    setSelectedRegularBooks([])
+    setSelectedPreviousBooks([])
     setStudentIssuances([])
     setLastIssued(null)
     setExamFilter('all')
     setUnitFilter('all')
+    setIssuanceMode('regular')
   }
 
   const noResults = searched && searchResults.length === 0 && searchQ.length >= 2
@@ -440,13 +449,42 @@ export default function Issue() {
             )}
           </div>
 
+          <div className="flex gap-2">
+            <button onClick={() => setIssuanceMode('regular')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-semibold transition-all ${issuanceMode === 'regular' ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#bd0a0a]'}`}>
+              <Package size={14} /> Issue {selectedRegularBooks.length > 0 && `(${selectedRegularBooks.length})`}
+            </button>
+            <button onClick={() => setIssuanceMode('previous')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-semibold transition-all ${issuanceMode === 'previous' ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#f0a500]'}`}>
+              <History size={14} /> Previous {selectedPreviousBooks.length > 0 && `(${selectedPreviousBooks.length})`}
+            </button>
+          </div>
+
+          {issuanceMode === 'previous' && (
+            <div className="bg-[#f0a500]/10 border border-[#f0a500]/30 rounded-xl px-4 py-3">
+              <p className="text-[#f0a500] text-sm font-semibold">Previous Issuance Mode</p>
+              <p className="text-[#9ca3af] text-xs mt-0.5">Books selected here are recorded on the student's profile but <span className="text-white font-medium">never deducted from stock</span>.</p>
+            </div>
+          )}
+
           {lastIssued && (
             <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 flex items-center justify-between">
-              <p className="text-emerald-400 text-sm font-medium">✓ {lastIssued.bookIds.length} book(s) issued successfully</p>
-              <button onClick={() => printSlip(lastIssued.student, lastIssued.bookIds)}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
-                <Printer size={13} /> Print Slip
-              </button>
+              <div>
+                <p className="text-emerald-400 text-sm font-medium">
+                  ✓ {(lastIssued.regularIds?.length || 0) + (lastIssued.previousIds?.length || 0)} book(s) recorded for {lastIssued.student.name}
+                </p>
+                <p className="text-[#6b7280] text-xs mt-0.5">
+                  {lastIssued.regularIds?.length > 0 && `${lastIssued.regularIds.length} issued`}
+                  {lastIssued.regularIds?.length > 0 && lastIssued.previousIds?.length > 0 && ' · '}
+                  {lastIssued.previousIds?.length > 0 && `${lastIssued.previousIds.length} previous`}
+                </p>
+              </div>
+              {lastIssued.regularIds?.length > 0 && (
+                <button onClick={() => printSlip(lastIssued.student, lastIssued.regularIds)}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-all">
+                  <Printer size={13} /> Print Slip
+                </button>
+              )}
             </div>
           )}
 
@@ -473,7 +511,7 @@ export default function Issue() {
 
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <p className="text-white font-semibold text-sm">Select Books <span className="text-[#6b7280] font-normal">({selectedBooks.length} selected)</span></p>
+              <p className="text-white font-semibold text-sm">Select Books <span className="text-[#6b7280] font-normal">({issuanceMode === 'regular' ? selectedRegularBooks.length : selectedPreviousBooks.length} selected)</span></p>
               {selectedStudent?.medium && (
                 <span className="text-xs bg-[#bd0a0a]/20 text-red-400 border border-[#bd0a0a]/30 px-2 py-0.5 rounded-full capitalize">
                   {selectedStudent.medium} only
@@ -516,12 +554,20 @@ export default function Issue() {
                     {visible.length === 0 ? (
                       <p className="text-[#6b7280] text-sm text-center py-4">No books match this filter</p>
                     ) : visible.map(b => {
-                      const isSelected = selectedBooks.includes(b.id)
                       const isIssued = studentIssuances.includes(b.id)
+                      const isSelectedRegular = selectedRegularBooks.includes(b.id)
+                      const isSelectedPrevious = selectedPreviousBooks.includes(b.id)
+                      const isSelectedCurrent = issuanceMode === 'regular' ? isSelectedRegular : isSelectedPrevious
+                      const isSelectedOther = issuanceMode === 'regular' ? isSelectedPrevious : isSelectedRegular
+                      const borderColor = isIssued ? 'opacity-40 cursor-not-allowed bg-[#12121f] border-[#2a2a45]'
+                        : isSelectedRegular ? 'bg-[#bd0a0a]/10 border-[#bd0a0a]/50 cursor-pointer'
+                        : isSelectedPrevious ? 'bg-[#f0a500]/10 border-[#f0a500]/50 cursor-pointer'
+                        : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55] cursor-pointer'
                       return (
-                        <label key={b.id}
-                          className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${isIssued ? 'opacity-40 cursor-not-allowed bg-[#12121f] border-[#2a2a45]' : isSelected ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40 cursor-pointer' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55] cursor-pointer'}`}>
-                          <input type="checkbox" checked={isSelected} disabled={isIssued} onChange={() => toggleBook(b.id)} className="accent-[#bd0a0a] w-4 h-4 flex-shrink-0" />
+                        <label key={b.id} className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${borderColor}`}>
+                          <input type="checkbox" checked={isSelectedCurrent} disabled={isIssued || isSelectedOther}
+                            onChange={() => toggleBook(b.id)}
+                            className={`w-4 h-4 flex-shrink-0 ${issuanceMode === 'previous' ? 'accent-[#f0a500]' : 'accent-[#bd0a0a]'}`} />
                           <div className="flex-1 min-w-0">
                             {(b.exam_level || b.unit || b.part) ? (
                               <>
@@ -533,7 +579,10 @@ export default function Issue() {
                             )}
                             <p className="text-[#6b7280] text-xs mt-0.5">{b.category?.replace('_',' ')} · {b.medium}</p>
                           </div>
-                          {isIssued && <span className="text-xs text-[#6b7280] flex-shrink-0">Already issued</span>}
+                          {isIssued ? <span className="text-xs text-[#6b7280] flex-shrink-0">Issued</span>
+                            : isSelectedRegular && issuanceMode === 'previous' ? <span className="text-xs text-[#bd0a0a] flex-shrink-0 font-medium">In Issue</span>
+                            : isSelectedPrevious && issuanceMode === 'regular' ? <span className="text-xs text-[#f0a500] flex-shrink-0 font-medium">In Prev.</span>
+                            : null}
                         </label>
                       )
                     })}
@@ -544,32 +593,44 @@ export default function Issue() {
 
           </div>
 
-          {selectedBooks.length > 0 && (
+          {(selectedRegularBooks.length > 0 || selectedPreviousBooks.length > 0) && (
             <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
-              <p className="text-white font-semibold text-sm">Confirm Issuance</p>
-              <div className="space-y-1.5">
-                {selectedBooks.map(id => {
-                  const book = books.find(b => b.id === id)
-                  return (
-                    <div key={id} className="flex items-start gap-2">
-                      <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        {(book?.exam_level || book?.unit || book?.part) ? (
-                          <>
-                            <p className="text-[#9ca3af] text-sm font-medium">{[book?.exam_level, book?.unit, book?.part].filter(Boolean).join(' › ')}</p>
-                            <p className="text-[#6b7280] text-xs truncate">{book?.title}</p>
-                          </>
-                        ) : (
-                          <p className="text-[#9ca3af] text-sm">{book?.title}</p>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <p className="text-white font-semibold text-sm">Summary</p>
+              {selectedRegularBooks.length > 0 && (
+                <div>
+                  <p className="text-xs text-[#bd0a0a] font-semibold uppercase tracking-wide mb-1.5">Issue ({selectedRegularBooks.length})</p>
+                  <div className="space-y-1">
+                    {selectedRegularBooks.map(id => {
+                      const book = books.find(b => b.id === id)
+                      return (
+                        <div key={id} className="flex items-start gap-2">
+                          <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                          <p className="text-[#9ca3af] text-sm truncate">{book?.exam_level ? [book?.exam_level,book?.unit,book?.part].filter(Boolean).join(' › ') : book?.title}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+              {selectedPreviousBooks.length > 0 && (
+                <div>
+                  <p className="text-xs text-[#f0a500] font-semibold uppercase tracking-wide mb-1.5">Previous Issue ({selectedPreviousBooks.length}) — no stock deduction</p>
+                  <div className="space-y-1">
+                    {selectedPreviousBooks.map(id => {
+                      const book = books.find(b => b.id === id)
+                      return (
+                        <div key={id} className="flex items-start gap-2">
+                          <Check size={13} className="text-[#f0a500] flex-shrink-0 mt-0.5" />
+                          <p className="text-[#9ca3af] text-sm truncate">{book?.exam_level ? [book?.exam_level,book?.unit,book?.part].filter(Boolean).join(' › ') : book?.title}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
               <button onClick={() => setConfirmOpen(true)} disabled={loading}
                 className="w-full bg-[#bd0a0a] hover:bg-[#a00909] disabled:opacity-50 text-white font-semibold py-3 rounded-lg text-sm transition-all">
-                Issue {selectedBooks.length} Book(s) to {selectedStudent.name}
+                Confirm {selectedRegularBooks.length + selectedPreviousBooks.length} Book(s) for {selectedStudent.name}
               </button>
             </div>
           )}
@@ -584,45 +645,50 @@ export default function Issue() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
             <h2 className="text-white font-semibold text-lg mb-1">Confirm Issuance</h2>
-            <p className="text-[#6b7280] text-sm mb-5">Please verify the details before issuing.</p>
-            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-4 mb-4 space-y-1">
+            <p className="text-[#6b7280] text-sm mb-4">Please verify before confirming.</p>
+            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-3 mb-4 space-y-0.5">
               <p className="text-xs text-[#6b7280] uppercase tracking-wide">Student</p>
               <p className="text-white font-semibold">{selectedStudent.name}</p>
               <p className="text-[#f0a500] text-sm font-mono">{selectedStudent.student_id}</p>
-              {selectedStudent.phone && <p className="text-[#9ca3af] text-sm">{selectedStudent.phone}</p>}
             </div>
-            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-4 mb-6">
-              <p className="text-xs text-[#6b7280] uppercase tracking-wide mb-2">Books to Issue ({selectedBooks.length})</p>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {selectedBooks.map(id => {
-                  const book = books.find(b => b.id === id)
-                  return (
-                    <div key={id} className="flex items-start gap-2">
-                      <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        {(book?.exam_level || book?.unit || book?.part) ? (
-                          <>
-                            <p className="text-white text-sm font-semibold">{[book?.exam_level, book?.unit, book?.part].filter(Boolean).join(' › ')}</p>
-                            <p className="text-[#6b7280] text-xs truncate">{book?.title}</p>
-                          </>
-                        ) : (
-                          <p className="text-white text-sm">{book?.title}</p>
-                        )}
+            <div className="space-y-3 max-h-60 overflow-y-auto mb-4">
+              {selectedRegularBooks.length > 0 && (
+                <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-3">
+                  <p className="text-xs text-[#bd0a0a] font-semibold uppercase tracking-wide mb-2">Issue — deducts stock ({selectedRegularBooks.length})</p>
+                  {selectedRegularBooks.map(id => {
+                    const book = books.find(b => b.id === id)
+                    return (
+                      <div key={id} className="flex items-start gap-2 py-1">
+                        <Check size={12} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-[#9ca3af] text-sm truncate">{book?.exam_level ? [book?.exam_level,book?.unit,book?.part].filter(Boolean).join(' › ') : book?.title}</p>
                       </div>
-                      <span className="text-[#6b7280] text-xs flex-shrink-0">{book?.medium}</span>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
+              {selectedPreviousBooks.length > 0 && (
+                <div className="bg-[#f0a500]/5 border border-[#f0a500]/30 rounded-lg p-3">
+                  <p className="text-xs text-[#f0a500] font-semibold uppercase tracking-wide mb-2">Previous Issue — no stock deduction ({selectedPreviousBooks.length})</p>
+                  {selectedPreviousBooks.map(id => {
+                    const book = books.find(b => b.id === id)
+                    return (
+                      <div key={id} className="flex items-start gap-2 py-1">
+                        <Check size={12} className="text-[#f0a500] flex-shrink-0 mt-0.5" />
+                        <p className="text-[#9ca3af] text-sm truncate">{book?.exam_level ? [book?.exam_level,book?.unit,book?.part].filter(Boolean).join(' › ') : book?.title}</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
             <div className="flex gap-3">
               <button onClick={() => setConfirmOpen(false)}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">
                 Cancel
               </button>
-              <button onClick={() => { setConfirmOpen(false); handleIssue() }} disabled={loading}
+              <button onClick={() => { setConfirmOpen(false); handleCombinedIssue() }} disabled={loading}
                 className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] disabled:opacity-50 text-white font-semibold text-sm transition-all">
-                {loading ? 'Issuing...' : 'Yes, Issue Books'}
+                {loading ? 'Saving...' : 'Confirm & Issue'}
               </button>
             </div>
           </div>
