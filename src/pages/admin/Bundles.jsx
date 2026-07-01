@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Plus, Package, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -8,6 +8,7 @@ function Modal({ open, onClose, onSave, books, initial }) {
   const [name, setName] = useState('')
   const [selected, setSelected] = useState([])
   const [search, setSearch] = useState('')
+  const [examFilter, setExamFilter] = useState('all')
   const isEdit = !!initial
 
   useEffect(() => {
@@ -15,6 +16,7 @@ function Modal({ open, onClose, onSave, books, initial }) {
       setName(initial?.name || '')
       setSelected(initial?.bundle_books?.map(bb => bb.book_id) || [])
       setSearch('')
+      setExamFilter('all')
     }
   }, [open, initial])
 
@@ -26,7 +28,21 @@ function Modal({ open, onClose, onSave, books, initial }) {
     await onSave(name, selected); onClose()
   }
 
-  const filtered = books.filter(b => b.title.toLowerCase().includes(search.toLowerCase()))
+  const examLevels = useMemo(() =>
+    [...new Set(books.map(b => b.exam_level).filter(Boolean))].sort(),
+    [books]
+  )
+
+  const filtered = useMemo(() => books.filter(b => {
+    const q = search.toLowerCase()
+    const matchSearch = !search ||
+      b.title?.toLowerCase().includes(q) ||
+      b.unit?.toLowerCase().includes(q) ||
+      b.subject?.toLowerCase().includes(q)
+    const matchExam = examFilter === 'all' || b.exam_level === examFilter
+    return matchSearch && matchExam
+  }), [books, search, examFilter])
+
   if (!open) return null
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
@@ -39,19 +55,50 @@ function Modal({ open, onClose, onSave, books, initial }) {
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
           </div>
           <div>
-            <label className="text-[#9ca3af] text-sm mb-1.5 block">Search & Select Books ({selected.length} selected)</label>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search books..."
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Select Books ({selected.length} selected)</label>
+
+            {/* Exam level chips */}
+            {examLevels.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {['all', ...examLevels].map(lvl => (
+                  <button key={lvl} type="button" onClick={() => setExamFilter(lvl)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                      examFilter === lvl
+                        ? lvl === 'Prelims' ? 'bg-blue-500/30 border-blue-500/60 text-blue-300'
+                          : lvl === 'Mains' ? 'bg-purple-500/30 border-purple-500/60 text-purple-300'
+                          : 'bg-[#bd0a0a] border-[#bd0a0a] text-white'
+                        : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#4a4a65]'
+                    }`}>
+                    {lvl === 'all' ? 'All' : lvl}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by title, unit, subject..."
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563] mb-2" />
+
             <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
-              {filtered.map(b => (
-                <label key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${selected.includes(b.id) ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
-                  <input type="checkbox" checked={selected.includes(b.id)} onChange={() => toggle(b.id)} className="accent-[#bd0a0a]" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm truncate">{b.title}</p>
-                    <p className="text-[#6b7280] text-xs">{b.category?.replace('_',' ')} · {b.medium}</p>
-                  </div>
-                </label>
-              ))}
+              {filtered.map(b => {
+                const label = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+                return (
+                  <label key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${selected.includes(b.id) ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
+                    <input type="checkbox" checked={selected.includes(b.id)} onChange={() => toggle(b.id)} className="accent-[#bd0a0a] flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      {label
+                        ? <>
+                            <p className="text-white text-sm font-medium truncate">{label}</p>
+                            <p className="text-[#6b7280] text-xs truncate">{b.title} · {b.category?.replace('_',' ')}</p>
+                          </>
+                        : <>
+                            <p className="text-white text-sm truncate">{b.title}</p>
+                            <p className="text-[#6b7280] text-xs">{b.category?.replace('_',' ')} · {b.medium}</p>
+                          </>
+                      }
+                    </div>
+                  </label>
+                )
+              })}
               {filtered.length === 0 && <p className="text-[#6b7280] text-sm text-center py-4">No books found</p>}
             </div>
           </div>

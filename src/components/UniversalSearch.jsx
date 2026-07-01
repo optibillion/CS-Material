@@ -11,6 +11,7 @@ export default function UniversalSearch() {
   const [loading, setLoading] = useState(false)
   const [expandedId, setExpandedId] = useState(null)
   const timeout = useRef(null)
+  const abortRef = useRef(null)
   const navigate = useNavigate()
   const { isAdmin } = useAuthStore()
   const ref = useRef(null)
@@ -27,21 +28,32 @@ export default function UniversalSearch() {
     setQuery(q)
     setExpandedId(null)
     if (timeout.current) clearTimeout(timeout.current)
-    if (q.length < 2) { setResults({ students: [], books: [], bundles: [] }); setOpen(false); return }
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null }
+    if (q.length < 2) { setResults({ students: [], books: [], bundles: [] }); setOpen(false); setLoading(false); return }
+    setLoading(true)
     timeout.current = setTimeout(async () => {
-      setLoading(true)
-      const [{ data: students }, { data: books }, { data: bundles }] = await Promise.all([
-        supabase.from('students').select('id, name, student_id, phone, medium, batches(name), bag_issued')
-          .or(`name.ilike.%${q}%,student_id.ilike.%${q}%,phone.ilike.%${q}%`).limit(5),
-        supabase.from('books').select('id, title, category, medium').eq('is_active', true)
-          .ilike('title', `%${q}%`).limit(4),
-        supabase.from('bundles').select('id, name').eq('is_active', true)
-          .ilike('name', `%${q}%`).limit(3)
-      ])
-      setResults({ students: students || [], books: books || [], bundles: bundles || [] })
-      setOpen(true)
-      setLoading(false)
-    }, 350)
+      const controller = new AbortController()
+      abortRef.current = controller
+      try {
+        const [{ data: students }, { data: books }, { data: bundles }] = await Promise.all([
+          supabase.from('students').select('id, name, student_id, phone, medium, batches(name), bag_issued')
+            .or(`name.ilike.%${q}%,student_id.ilike.%${q}%,phone.ilike.%${q}%`).limit(5)
+            .abortSignal(controller.signal),
+          supabase.from('books').select('id, title, category, medium').eq('is_active', true)
+            .ilike('title', `%${q}%`).limit(4)
+            .abortSignal(controller.signal),
+          supabase.from('bundles').select('id, name').eq('is_active', true)
+            .ilike('name', `%${q}%`).limit(3)
+            .abortSignal(controller.signal)
+        ])
+        setResults({ students: students || [], books: books || [], bundles: bundles || [] })
+        setOpen(true)
+      } catch {
+        // aborted — ignore
+      } finally {
+        setLoading(false)
+      }
+    }, 300)
   }
 
   function goTo(path) {
