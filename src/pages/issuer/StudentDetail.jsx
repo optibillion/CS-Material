@@ -54,7 +54,7 @@ export default function IssuerStudentDetail() {
     const { error } = await supabase.from('students').update({ phone: cleaned }).eq('id', id)
     setPhoneSaving(false)
     if (error) { toast.error('Failed to update phone'); return }
-    logAction('PHONE_UPDATED', `${student.name} (${student.student_id}) — ${oldPhone} → ${cleaned}`)
+    logAction('PHONE_UPDATED', `${student.name} (${student.student_id}) — ${oldPhone} → ${cleaned} · by ${profile?.name}`)
     setStudent(prev => ({ ...prev, phone: cleaned }))
     setPhoneModal(false)
     toast.success('Phone number updated')
