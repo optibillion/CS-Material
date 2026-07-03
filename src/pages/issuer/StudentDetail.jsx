@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { ArrowLeft, BookOpen, Send, ShoppingBag } from 'lucide-react'
+import { ArrowLeft, BookOpen, Send, ShoppingBag, Pencil } from 'lucide-react'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
@@ -15,6 +15,10 @@ export default function IssuerStudentDetail() {
   const [issuances, setIssuances] = useState([])
   const [bagIssuerName, setBagIssuerName] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [phoneModal, setPhoneModal] = useState(false)
+  const [phoneInput, setPhoneInput] = useState('')
+  const [phoneError, setPhoneError] = useState('')
+  const [phoneSaving, setPhoneSaving] = useState(false)
 
   useEffect(() => { fetchAll() }, [id])
 
@@ -34,6 +38,26 @@ export default function IssuerStudentDetail() {
       setBagIssuerName(u?.name || null)
     }
     setLoading(false)
+  }
+
+  function openPhoneModal() {
+    setPhoneInput(student.phone || '')
+    setPhoneError('')
+    setPhoneModal(true)
+  }
+
+  async function handleSavePhone() {
+    const cleaned = phoneInput.replace(/\D/g, '')
+    if (cleaned.length !== 10) { setPhoneError('Phone number must be exactly 10 digits'); return }
+    setPhoneSaving(true)
+    const oldPhone = student.phone || '—'
+    const { error } = await supabase.from('students').update({ phone: cleaned }).eq('id', id)
+    setPhoneSaving(false)
+    if (error) { toast.error('Failed to update phone'); return }
+    logAction('PHONE_UPDATED', `${student.name} (${student.student_id}) — ${oldPhone} → ${cleaned}`)
+    setStudent(prev => ({ ...prev, phone: cleaned }))
+    setPhoneModal(false)
+    toast.success('Phone number updated')
   }
 
   async function handleIssueBag() {
@@ -94,8 +118,16 @@ export default function IssuerStudentDetail() {
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+          <div>
+            <p className="text-[#6b7280] text-xs">Phone</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <p className="text-white text-sm font-medium">{student.phone || '—'}</p>
+              <button onClick={openPhoneModal} className="text-[#6b7280] hover:text-[#f0a500] transition-colors" title="Edit phone">
+                <Pencil size={12} />
+              </button>
+            </div>
+          </div>
           {[
-            { label: 'Phone', value: student.phone },
             { label: 'Batch', value: student.batches ? (student.batches.batch_code ? `${student.batches.batch_code} · ${student.batches.name}` : student.batches.name) : null },
             { label: 'Admitted', value: student.admission_date ? format(new Date(student.admission_date), 'dd MMM yyyy') : null },
           ].map(({ label, value }) => (
@@ -151,6 +183,33 @@ export default function IssuerStudentDetail() {
           ))}
         </div>
       </div>
+
+      {phoneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 w-full max-w-sm space-y-4">
+            <h3 className="text-white font-semibold text-sm">Update Phone Number</h3>
+            <div>
+              <input
+                type="tel"
+                inputMode="numeric"
+                value={phoneInput}
+                onChange={e => { setPhoneInput(e.target.value.replace(/\D/g, '').slice(0, 10)); setPhoneError('') }}
+                placeholder="10-digit phone number"
+                className="w-full bg-[#0f0f23] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#f0a500] placeholder-[#4b5563]"
+              />
+              {phoneError && <p className="text-red-400 text-xs mt-1">{phoneError}</p>}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setPhoneModal(false)} className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
+                Cancel
+              </button>
+              <button onClick={handleSavePhone} disabled={phoneSaving} className="text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all disabled:opacity-50">
+                {phoneSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
