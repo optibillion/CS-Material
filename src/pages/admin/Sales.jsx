@@ -173,14 +173,9 @@ export default function Sales() {
               <tr key={s.id} className={`hover:bg-[#12121f] transition-colors ${s.is_returned?'opacity-50':''}`}>
                 <td className="px-5 py-3"><p className="text-white text-sm font-medium">{s.buyer_name}</p><p className="text-[#6b7280] text-xs">{s.buyer_phone}</p></td>
                 <td className="px-5 py-3">
-                  {(s.books?.exam_level||s.books?.unit||s.books?.part) ? (
-                    <>
-                      <p className="text-white text-sm font-semibold">{[s.books?.exam_level,s.books?.unit,s.books?.part].filter(Boolean).join(' › ')}</p>
-                      <p className="text-[#6b7280] text-xs truncate">{s.books?.title}</p>
-                    </>
-                  ) : (
-                    <p className="text-[#9ca3af] text-sm">{s.books?.title}</p>
-                  )}
+                  {s.books?.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{s.books.exam_level}</span>}
+                  <p className="text-white text-sm font-bold leading-snug">{[s.books?.unit, s.books?.part].filter(Boolean).join(' · ') || s.books?.title}</p>
+                  {(s.books?.unit || s.books?.part) && <p className="text-[#4b5563] text-[11px] truncate">{s.books?.title}</p>}
                 </td>
                 <td className="px-5 py-3 text-white text-sm">{s.qty}</td>
                 <td className="px-5 py-3 text-[#f0a500] text-sm font-medium">₹{s.total_price}</td>
@@ -209,14 +204,9 @@ export default function Sales() {
               </div>
               <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${s.is_returned?'bg-red-500/20 text-red-400 border-red-500/30':'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>{s.is_returned?'Returned':'Sold'}</span>
             </div>
-            {(s.books?.exam_level||s.books?.unit||s.books?.part) ? (
-              <>
-                <p className="text-white text-sm font-semibold">{[s.books?.exam_level,s.books?.unit,s.books?.part].filter(Boolean).join(' › ')}</p>
-                <p className="text-[#6b7280] text-xs truncate mb-1">{s.books?.title}</p>
-              </>
-            ) : (
-              <p className="text-[#9ca3af] text-sm mb-1">{s.books?.title}</p>
-            )}
+            {s.books?.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{s.books.exam_level}</span>}
+            <p className="text-white text-sm font-bold leading-snug">{[s.books?.unit, s.books?.part].filter(Boolean).join(' · ') || s.books?.title}</p>
+            {(s.books?.unit || s.books?.part) && <p className="text-[#4b5563] text-[11px] truncate mb-1">{s.books?.title}</p>}
             <div className="flex items-center justify-between mb-3">
               <p className="text-[#6b7280] text-xs">qty {s.qty} · by {s.users?.name||'—'} · {format(new Date(s.sold_at),'dd MMM yy')}</p>
               <p className="text-[#f0a500] text-sm font-semibold">₹{s.total_price}</p>
@@ -327,15 +317,9 @@ export default function Sales() {
                             <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all cursor-pointer ${sel ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
                               <input type="checkbox" checked={!!sel} onChange={() => toggleBook(b.id)} className="accent-[#bd0a0a] w-4 h-4 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                {(b.exam_level||b.unit||b.part) ? (
-                                  <>
-                                    <p className="text-white text-sm font-semibold">{[b.exam_level,b.unit,b.part].filter(Boolean).join(' › ')}</p>
-                                    <p className="text-[#6b7280] text-xs truncate">{b.title}</p>
-                                  </>
-                                ) : (
-                                  <p className="text-white text-sm">{b.title}</p>
-                                )}
-                                <p className="text-[#6b7280] text-xs">{b.category?.replace('_', ' ')} · {b.medium}</p>
+                                {b.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{b.exam_level}</span>}
+                                <p className="text-white text-sm font-bold leading-snug">{[b.unit, b.part].filter(Boolean).join(' · ') || b.title}</p>
+                                {(b.unit || b.part) && <p className="text-[#4b5563] text-[11px] truncate">{b.title}</p>}
                               </div>
                               <span className={`text-xs flex-shrink-0 font-medium ${avail > 5 ? 'text-emerald-400' : avail > 0 ? 'text-yellow-400' : 'text-[#6b7280]'}`}>
                                 {avail} avail
@@ -406,14 +390,9 @@ export default function Sales() {
                       <div className="flex items-start gap-2 flex-1 min-w-0">
                         <Check size={13} className="text-emerald-400 flex-shrink-0 mt-0.5" />
                         <div className="flex-1 min-w-0">
-                          {(book?.exam_level||book?.unit||book?.part) ? (
-                            <>
-                              <p className="text-white text-sm font-semibold">{[book?.exam_level,book?.unit,book?.part].filter(Boolean).join(' › ')}</p>
-                              <p className="text-[#6b7280] text-xs truncate">{book?.title}</p>
-                            </>
-                          ) : (
-                            <p className="text-white text-sm">{book?.title}</p>
-                          )}
+                          {book?.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{book.exam_level}</span>}
+                          <p className="text-white text-sm font-bold leading-snug">{[book?.unit, book?.part].filter(Boolean).join(' · ') || book?.title}</p>
+                          {(book?.unit || book?.part) && <p className="text-[#4b5563] text-[11px] truncate">{book?.title}</p>}
                         </div>
                       </div>
                       <span className="text-[#6b7280] text-xs flex-shrink-0">x{b.qty}</span>
