@@ -162,12 +162,12 @@ function RowItem({ type, row, index }) {
             <p className="text-white text-sm font-medium truncate">{row.books?.title}</p>
           )}
           <p className="text-[#6b7280] text-xs">
-            {row.buyer_name ? `${row.buyer_name} · ` : ''}{row.quantity ?? 1} copy
+            {row.buyer_name ? `${row.buyer_name} · ` : ''}{row.qty ?? 1} copy
           </p>
           <p className="text-[#4b5563] text-xs">by {row.users?.name || '—'}</p>
         </div>
         <div className="text-right flex-shrink-0">
-          {row.amount && <p className="text-[#f0a500] text-sm font-semibold">₹{row.amount}</p>}
+          {row.total_price && <p className="text-[#f0a500] text-sm font-semibold">₹{row.total_price}</p>}
           <p className="text-[#6b7280] text-xs">{format(new Date(row.sold_at), 'hh:mm a')}</p>
         </div>
       </div>
@@ -245,7 +245,7 @@ async function fetchData(type) {
     case 'salesToday': {
       const { data } = await supabase
         .from('sales')
-        .select('id, sold_at, amount, quantity, buyer_name, books(title, exam_level, unit, part), users!sales_sold_by_fkey(name)')
+        .select('id, sold_at, total_price, qty, buyer_name, books(title, exam_level, unit, part), users!sales_sold_by_fkey(name)')
         .gte('sold_at', todayISO).eq('is_returned', false)
         .order('sold_at', { ascending: false })
       return data || []
