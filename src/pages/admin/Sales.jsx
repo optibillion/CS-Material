@@ -284,7 +284,7 @@ export default function Sales() {
                         <div className="flex flex-wrap gap-1.5">
                           {['all', ...saleExamOptions].map(e => (
                             <button key={e} type="button" onClick={() => { setSaleExamFilter(e); setSaleUnitFilter('all') }}
-                              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${saleExamFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                              className={`px-3 py-1.5 rounded-full text-xs font-medium border touch-manipulation capitalize ${saleExamFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] active:opacity-70'}`}>
                               {e === 'all' ? 'All Exams' : e}
                             </button>
                           ))}
@@ -293,7 +293,7 @@ export default function Sales() {
                           <div className="flex flex-wrap gap-1.5">
                             {['all', ...saleUnitOptions].map(u => (
                               <button key={u} type="button" onClick={() => setSaleUnitFilter(u)}
-                                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${saleUnitFilter === u ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                                className={`px-3 py-1.5 rounded-full text-xs font-medium border touch-manipulation capitalize ${saleUnitFilter === u ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] active:opacity-70'}`}>
                                 {u === 'all' ? 'All Units' : u}
                               </button>
                             ))}

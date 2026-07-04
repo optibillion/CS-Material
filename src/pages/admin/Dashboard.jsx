@@ -20,7 +20,7 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full text-left bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 hover:border-[#3a3a55] active:scale-95 transition-all"
+      className="w-full text-left bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 hover:border-[#3a3a55] active:opacity-70 transition-opacity touch-manipulation"
     >
       <div className="flex items-start justify-between">
         <div>

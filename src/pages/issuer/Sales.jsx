@@ -199,7 +199,7 @@ export default function IssuerSales() {
                 <div className="flex flex-wrap gap-1.5">
                   {['all', ...examOptions].map(e => (
                     <button key={e} type="button" onClick={() => { setExamFilter(e); setUnitFilter('all') }}
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${examFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                      className={`px-3 py-1.5 rounded-full text-xs font-medium border touch-manipulation capitalize ${examFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] active:opacity-70'}`}>
                       {e === 'all' ? 'All Exams' : e}
                     </button>
                   ))}
@@ -208,7 +208,7 @@ export default function IssuerSales() {
                   <div className="flex flex-wrap gap-1.5">
                     {['all', ...unitOptions].map(u => (
                       <button key={u} type="button" onClick={() => setUnitFilter(u)}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${unitFilter === u ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border touch-manipulation capitalize ${unitFilter === u ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] active:opacity-70'}`}>
                         {u === 'all' ? 'All Units' : u}
                       </button>
                     ))}
