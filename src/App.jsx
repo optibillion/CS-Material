@@ -1,6 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
+import { supabase } from './lib/supabase'
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
 import Login from './pages/auth/Login'
 import AdminLayout from './components/AdminLayout'
@@ -43,9 +47,38 @@ function ProtectedIssuer({ children }) {
   return children
 }
 
+function SessionGuard() {
+  const { user, logout, loginAt } = useAuthStore()
+
+  useEffect(() => {
+    // Auto-logout if 30 days have passed since login
+    if (loginAt && Date.now() - loginAt > THIRTY_DAYS_MS) {
+      logout()
+      return
+    }
+
+    // Sync Zustand with actual Supabase session on mount
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session && user) logout()
+    })
+
+    // Listen for Supabase auth events (token refresh failure, sign out, etc.)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') && !session && user) {
+        logout()
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  return null
+}
+
 export default function App() {
   return (
     <BrowserRouter>
+      <SessionGuard />
       <Toaster
         position="top-right"
         toastOptions={{

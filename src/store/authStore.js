@@ -8,6 +8,7 @@ export const useAuthStore = create(
       user: null,
       profile: null,
       isAdmin: false,
+      loginAt: null,
 
       login: async (username, password) => {
         // Step 1: Get email from username using service role (bypass RLS)
@@ -39,19 +40,20 @@ export const useAuthStore = create(
         set({
           user: safeProfile,
           profile: safeProfile,
-          isAdmin: safeProfile.role === 'admin'
+          isAdmin: safeProfile.role === 'admin',
+          loginAt: Date.now()
         })
         return safeProfile
       },
 
       logout: async () => {
         await supabase.auth.signOut()
-        set({ user: null, profile: null, isAdmin: false })
+        set({ user: null, profile: null, isAdmin: false, loginAt: null })
       }
     }),
     {
       name: 'csmdis-auth',
-      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin })
+      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, loginAt: state.loginAt })
     }
   )
 )

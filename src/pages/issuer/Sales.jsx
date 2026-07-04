@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { Check, ShoppingCart, Package } from 'lucide-react'
+import { Check, ShoppingCart, Package, Search } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 
 export default function IssuerSales() {
@@ -21,6 +21,9 @@ export default function IssuerSales() {
   const [saleMedium, setSaleMedium] = useState('')
   const [selectedBooks, setSelectedBooks] = useState([]) // [{id, qty}]
   const [finalPrice, setFinalPrice] = useState('')
+  const [examFilter, setExamFilter] = useState('all')
+  const [unitFilter, setUnitFilter] = useState('all')
+  const [bookSearch, setBookSearch] = useState('')
 
   useEffect(() => { fetchData() }, [])
 
@@ -144,7 +147,7 @@ export default function IssuerSales() {
           <label className="text-[#9ca3af] text-xs mb-2 block">Medium *</label>
           <div className="grid grid-cols-2 gap-2">
             {['hindi', 'english'].map(m => (
-              <button key={m} type="button" onClick={() => { setSaleMedium(m); setSelectedBooks([]) }}
+              <button key={m} type="button" onClick={() => { setSaleMedium(m); setSelectedBooks([]); setExamFilter('all'); setUnitFilter('all'); setBookSearch('') }}
                 className={`py-2.5 rounded-lg border text-sm font-medium capitalize transition-all ${saleMedium === m ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#bd0a0a]'}`}>
                 {m}
               </button>
@@ -177,39 +180,87 @@ export default function IssuerSales() {
       )}
 
       {/* Book Selection */}
-      {saleMedium && (
-      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
-        <p className="text-white font-semibold text-sm">Select Books <span className="text-[#6b7280] font-normal capitalize">({saleMedium} · {selectedBooks.length} selected)</span></p>
-        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-          {books.filter(b => b.medium === saleMedium).map(b => {
-            const avail = stockMap[b.id] || 0
-            const sel = selectedBooks.find(s => s.id === b.id)
-            return (
-              <div key={b.id}>
-                <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all cursor-pointer ${sel ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
-                  <input type="checkbox" checked={!!sel} onChange={() => toggleBook(b.id)} className="accent-[#bd0a0a] w-4 h-4 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm">{b.title}</p>
-                    <p className="text-[#6b7280] text-xs mt-0.5">{b.category?.replace('_', ' ')} · {b.medium}</p>
-                  </div>
-                  <span className={`text-xs flex-shrink-0 font-medium ${avail > 5 ? 'text-emerald-400' : avail > 0 ? 'text-yellow-400' : 'text-[#6b7280]'}`}>
-                    {avail} avail
-                  </span>
-                </label>
-                {sel && (
-                  <div className="mt-1.5 px-1 pb-1 w-32">
-                    <label className="text-[#9ca3af] text-xs mb-1 block">Qty</label>
-                    <input type="number" min="1" value={sel.qty}
-                      onChange={e => updateBook(b.id, 'qty', e.target.value)}
-                      className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+      {saleMedium && (() => {
+        const saleBooks = books.filter(b => b.medium === saleMedium || b.medium === 'both')
+        const examOptions = [...new Set(saleBooks.map(b => b.exam_level).filter(Boolean))].sort()
+        const unitOptions = [...new Set(saleBooks.filter(b => examFilter === 'all' || b.exam_level === examFilter).map(b => b.unit).filter(Boolean))].sort()
+        const visibleBooks = saleBooks.filter(b =>
+          (examFilter === 'all' || b.exam_level === examFilter) &&
+          (unitFilter === 'all' || b.unit === unitFilter) &&
+          (!bookSearch.trim() || b.title?.toLowerCase().includes(bookSearch.toLowerCase()) ||
+            b.exam_level?.toLowerCase().includes(bookSearch.toLowerCase()) ||
+            b.unit?.toLowerCase().includes(bookSearch.toLowerCase()))
+        )
+        return (
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">
+            <p className="text-white font-semibold text-sm">Select Books <span className="text-[#6b7280] font-normal capitalize">({saleMedium} · {selectedBooks.length} selected)</span></p>
+            {examOptions.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {['all', ...examOptions].map(e => (
+                    <button key={e} type="button" onClick={() => { setExamFilter(e); setUnitFilter('all') }}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${examFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                      {e === 'all' ? 'All Exams' : e}
+                    </button>
+                  ))}
+                </div>
+                {unitOptions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {['all', ...unitOptions].map(u => (
+                      <button key={u} type="button" onClick={() => setUnitFilter(u)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${unitFilter === u ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                        {u === 'all' ? 'All Units' : u}
+                      </button>
+                    ))}
                   </div>
                 )}
               </div>
-            )
-          })}
-        </div>
-      </div>
-      )}
+            )}
+            <div className="relative">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+              <input value={bookSearch} onChange={e => setBookSearch(e.target.value)} placeholder="Search books..."
+                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+            </div>
+            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+              {visibleBooks.length === 0 ? (
+                <p className="text-[#6b7280] text-sm text-center py-4">No books match this filter</p>
+              ) : visibleBooks.map(b => {
+                const avail = stockMap[b.id] || 0
+                const sel = selectedBooks.find(s => s.id === b.id)
+                return (
+                  <div key={b.id}>
+                    <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all cursor-pointer ${sel ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
+                      <input type="checkbox" checked={!!sel} onChange={() => toggleBook(b.id)} className="accent-[#bd0a0a] w-4 h-4 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        {(b.exam_level || b.unit || b.part) ? (
+                          <>
+                            <p className="text-white text-sm font-semibold">{[b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')}</p>
+                            <p className="text-[#6b7280] text-xs truncate">{b.title}</p>
+                          </>
+                        ) : (
+                          <p className="text-white text-sm">{b.title}</p>
+                        )}
+                        <p className="text-[#6b7280] text-xs">{b.category?.replace('_', ' ')} · {b.medium}</p>
+                      </div>
+                      <span className={`text-xs flex-shrink-0 font-medium ${avail > 5 ? 'text-emerald-400' : avail > 0 ? 'text-yellow-400' : 'text-[#6b7280]'}`}>
+                        {avail} avail
+                      </span>
+                    </label>
+                    {sel && (
+                      <div className="mt-1.5 px-1 pb-1 w-32">
+                        <label className="text-[#9ca3af] text-xs mb-1 block">Qty</label>
+                        <input type="number" min="1" value={sel.qty}
+                          onChange={e => updateBook(b.id, 'qty', e.target.value)}
+                          className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
 
       {selectedBooks.length > 0 && (
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 space-y-3">

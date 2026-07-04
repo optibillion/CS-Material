@@ -27,6 +27,7 @@ export default function Sales() {
   const [recording, setRecording] = useState(false)
   const [saleExamFilter, setSaleExamFilter] = useState('all')
   const [saleUnitFilter, setSaleUnitFilter] = useState('all')
+  const [saleBookSearch, setSaleBookSearch] = useState('')
 
   const total = parseFloat(finalPrice) || 0
 
@@ -63,7 +64,7 @@ export default function Sales() {
     for (const s of (stockData || [])) map[s.book_id] = (map[s.book_id] || 0) + (s.available_qty || 0)
     setStockMap(map)
     setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setSelectedBooks([]); setFinalPrice('')
-    setSaleExamFilter('all'); setSaleUnitFilter('all')
+    setSaleExamFilter('all'); setSaleUnitFilter('all'); setSaleBookSearch('')
     setRecordOpen(true)
   }
 
@@ -246,7 +247,7 @@ export default function Sales() {
                 <label className="text-[#9ca3af] text-xs mb-2 block">Medium *</label>
                 <div className="grid grid-cols-2 gap-2">
                   {['hindi', 'english'].map(m => (
-                    <button key={m} type="button" onClick={() => { setSaleMedium(m); setSelectedBooks([]); setSaleExamFilter('all'); setSaleUnitFilter('all') }}
+                    <button key={m} type="button" onClick={() => { setSaleMedium(m); setSelectedBooks([]); setSaleExamFilter('all'); setSaleUnitFilter('all'); setSaleBookSearch('') }}
                       className={`py-2 rounded-lg border text-sm font-medium capitalize transition-all ${saleMedium === m ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#bd0a0a]'}`}>
                       {m}
                     </button>
@@ -275,12 +276,15 @@ export default function Sales() {
                 </div>
               )}
               {saleMedium && (() => {
-                const saleBooks = books.filter(b => b.medium === saleMedium)
+                const saleBooks = books.filter(b => b.medium === saleMedium || b.medium === 'both')
                 const saleExamOptions = [...new Set(saleBooks.map(b => b.exam_level).filter(Boolean))].sort()
                 const saleUnitOptions = [...new Set(saleBooks.filter(b => saleExamFilter === 'all' || b.exam_level === saleExamFilter).map(b => b.unit).filter(Boolean))].sort()
                 const visibleSaleBooks = saleBooks.filter(b =>
                   (saleExamFilter === 'all' || b.exam_level === saleExamFilter) &&
-                  (saleUnitFilter === 'all' || b.unit === saleUnitFilter)
+                  (saleUnitFilter === 'all' || b.unit === saleUnitFilter) &&
+                  (!saleBookSearch.trim() || b.title?.toLowerCase().includes(saleBookSearch.toLowerCase()) ||
+                    b.exam_level?.toLowerCase().includes(saleBookSearch.toLowerCase()) ||
+                    b.unit?.toLowerCase().includes(saleBookSearch.toLowerCase()))
                 )
                 return (
                   <div className="space-y-3">
@@ -307,8 +311,15 @@ export default function Sales() {
                         )}
                       </div>
                     )}
+                    <div className="relative">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+                      <input value={saleBookSearch} onChange={e => setSaleBookSearch(e.target.value)} placeholder="Search books..."
+                        className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+                    </div>
                     <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                      {visibleSaleBooks.map(b => {
+                      {visibleSaleBooks.length === 0 ? (
+                        <p className="text-[#6b7280] text-sm text-center py-4">No books match this filter</p>
+                      ) : visibleSaleBooks.map(b => {
                         const avail = stockMap[b.id] || 0
                         const sel = selectedBooks.find(s => s.id === b.id)
                         return (
