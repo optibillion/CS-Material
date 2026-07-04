@@ -688,12 +688,13 @@ export default function Students() {
         return
       }
     }
-    const { error } = await supabase.from('students').update(payload).eq('id', editing.id)
+    const { data: updated, error } = await supabase.from('students').update(payload).eq('id', editing.id).select('id').single()
     if (error) {
       if (error.code === '23505') toast.error('Student ID already in use by another student')
       else toast.error('Failed to update student')
       return
     }
+    if (!updated) { toast.error('Failed to update — check permissions'); return }
     toast.success('Student updated')
     logAction('STUDENT_UPDATED', `${editing.name} (${editing.student_id})${cleanForm.student_id !== editing.student_id ? ` → ID changed to ${cleanForm.student_id}` : ''}`)
     fetchAll()

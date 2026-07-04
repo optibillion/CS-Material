@@ -213,12 +213,13 @@ export default function StudentDetail() {
         payload.profile_image_url = url
       } catch { toast.error('Photo upload failed'); return }
     }
-    const { error } = await supabase.from('students').update(payload).eq('id', id)
+    const { data: updated, error } = await supabase.from('students').update(payload).eq('id', id).select('id').single()
     if (error) {
       if (error.code === '23505') toast.error('Student ID already in use by another student')
       else toast.error('Failed to update')
       return
     }
+    if (!updated) { toast.error('Failed to update — check permissions'); return }
     toast.success('Student updated')
     logAction('STUDENT_UPDATED', `${student.name} (${student.student_id})${form.student_id !== student.student_id ? ` → ID changed to ${form.student_id}` : ''}`)
     fetchAll()

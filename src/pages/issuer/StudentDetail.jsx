@@ -51,9 +51,17 @@ export default function IssuerStudentDetail() {
     if (cleaned.length !== 10) { setPhoneError('Phone number must be exactly 10 digits'); return }
     setPhoneSaving(true)
     const oldPhone = student.phone || '—'
-    const { error } = await supabase.from('students').update({ phone: cleaned }).eq('id', id)
+    const { data: updated, error } = await supabase
+      .from('students')
+      .update({ phone: cleaned })
+      .eq('id', id)
+      .select('phone')
+      .single()
     setPhoneSaving(false)
-    if (error) { toast.error('Failed to update phone'); return }
+    if (error || !updated || updated.phone !== cleaned) {
+      toast.error('Failed to update phone')
+      return
+    }
     logAction('PHONE_UPDATED', `${student.name} (${student.student_id}) — ${oldPhone} → ${cleaned} · by ${profile?.name}`)
     setStudent(prev => ({ ...prev, phone: cleaned }))
     setPhoneModal(false)
