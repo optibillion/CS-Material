@@ -4,7 +4,7 @@ import { supabase, generateStudentId, uploadStudentPhoto } from '../../lib/supab
 import { useAuthStore } from '../../store/authStore'
 import { useRealtime } from '../../hooks/useRealtime'
 import { logAction } from '../../lib/audit'
-import { Plus, Search, Pencil, UserX, UserCheck, Upload, X, Camera } from 'lucide-react'
+import { Plus, Search, Pencil, UserX, UserCheck, Upload, X, Camera, Trash2, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import CameraModal from '../../components/CameraModal'
@@ -622,6 +622,7 @@ export default function Students() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showInactive, setShowInactive] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
   const [addOpen, setAddOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [bulkOpen, setBulkOpen] = useState(false)
@@ -717,6 +718,38 @@ export default function Students() {
     fetchAll()
   }
 
+  async function handleDelete(s) {
+    const { error } = await supabase.from('students').delete().eq('id', s.id)
+    if (error) { toast.error('Failed to delete student'); return }
+    toast.success(`${s.name} permanently deleted`)
+    logAction('STUDENT_DELETED', `${s.name} (${s.student_id})`)
+    setDeleteConfirm(null)
+    fetchAll()
+  }
+
+  function handleExportDeactivated() {
+    const headers = ['Student ID', 'Name', 'Phone', 'Batch', 'Medium', 'Admitted', 'DOB']
+    const csv = [
+      headers.join(','),
+      ...filtered.map(s => [
+        s.student_id,
+        `"${(s.name || '').replace(/"/g, '""')}"`,
+        s.phone || '',
+        `"${s.batches?.name || ''}"`,
+        s.medium || '',
+        s.admission_date ? format(new Date(s.admission_date), 'dd MMM yyyy') : '',
+        s.dob ? format(new Date(s.dob), 'dd MMM yyyy') : '',
+      ].join(','))
+    ].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `deactivated-students-${format(new Date(), 'yyyy-MM-dd')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const inactiveCount = students.filter(s => s.is_active === false).length
 
   const filtered = students.filter(s => {
@@ -735,36 +768,62 @@ export default function Students() {
           <p className="text-[#6b7280] text-sm mt-0.5">{students.filter(s => s.is_active !== false).length} active enrolled</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setBulkOpen(true)}
-            className="flex items-center gap-2 bg-[#2a2a45] hover:bg-[#3a3a55] text-[#f0a500] border border-[#f0a500]/30 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-            <Upload size={15} /> Bulk Upload
-          </button>
-          <button onClick={() => setAddOpen(true)}
-            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-            <Plus size={16} /> Add Student
-          </button>
+          {!showInactive && (
+            <>
+              <button onClick={() => setBulkOpen(true)}
+                className="flex items-center gap-2 bg-[#2a2a45] hover:bg-[#3a3a55] text-[#f0a500] border border-[#f0a500]/30 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+                <Upload size={15} /> Bulk Upload
+              </button>
+              <button onClick={() => setAddOpen(true)}
+                className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+                <Plus size={16} /> Add Student
+              </button>
+            </>
+          )}
+          {showInactive && filtered.length > 0 && (
+            <button onClick={handleExportDeactivated}
+              className="flex items-center gap-2 bg-[#2a2a45] hover:bg-[#3a3a55] text-orange-400 border border-orange-500/30 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+              <Download size={15} /> Export CSV
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, ID or phone..."
-            className="w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-lg pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
-        </div>
-        {inactiveCount > 0 && (
-          <button onClick={() => setShowInactive(v => !v)}
-            className={`text-sm px-4 py-2 rounded-lg border transition-all flex-shrink-0 flex items-center gap-1.5 ${showInactive ? 'bg-orange-500/20 border-orange-500/40 text-orange-400' : 'bg-[#1a1a2e] border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
-            {showInactive ? <UserCheck size={14} /> : <UserX size={14} />}
-            {showInactive ? 'Show Active' : `Inactive (${inactiveCount})`}
-          </button>
-        )}
+      {/* Tabs */}
+      <div className="flex gap-1 bg-[#12121f] border border-[#2a2a45] rounded-xl p-1 w-fit">
+        <button
+          onClick={() => { setShowInactive(false); setSearch('') }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${!showInactive ? 'bg-[#bd0a0a] text-white shadow' : 'text-[#6b7280] hover:text-white'}`}>
+          <UserCheck size={14} />
+          Active
+          <span className={`text-xs px-1.5 py-0.5 rounded-md ${!showInactive ? 'bg-white/20 text-white' : 'bg-[#2a2a45] text-[#9ca3af]'}`}>
+            {students.filter(s => s.is_active !== false).length}
+          </span>
+        </button>
+        <button
+          onClick={() => { setShowInactive(true); setSearch('') }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${showInactive ? 'bg-orange-500/20 text-orange-400 shadow' : 'text-[#6b7280] hover:text-white'}`}>
+          <UserX size={14} />
+          Deactivated
+          {inactiveCount > 0 && (
+            <span className={`text-xs px-1.5 py-0.5 rounded-md ${showInactive ? 'bg-orange-500/30 text-orange-300' : 'bg-[#2a2a45] text-[#9ca3af]'}`}>
+              {inactiveCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+        <input value={search} onChange={e => setSearch(e.target.value)}
+          placeholder={showInactive ? 'Search deactivated students...' : 'Search by name, ID or phone...'}
+          className="w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-lg pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
       </div>
 
       {showInactive && (
         <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 rounded-lg">
-          <UserX size={14} className="text-orange-400" />
-          <p className="text-orange-400 text-xs">Showing deactivated students — these students cannot be searched in Issue page</p>
+          <UserX size={14} className="text-orange-400 flex-shrink-0" />
+          <p className="text-orange-400 text-xs">Deactivated students cannot be searched or issued books. You can reactivate or permanently delete them.</p>
         </div>
       )}
 
@@ -819,6 +878,12 @@ export default function Students() {
                       className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-all ${s.is_active === false ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400' : 'bg-[#2a2a45] hover:bg-orange-500/20 hover:text-orange-400 text-[#9ca3af]'}`}>
                       {s.is_active === false ? <><UserCheck size={11}/> Activate</> : <><UserX size={11}/> Deactivate</>}
                     </button>
+                    {s.is_active === false && (
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(s) }}
+                        className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-all">
+                        <Trash2 size={11} /> Delete
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -863,10 +928,17 @@ export default function Students() {
                 className={`flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg transition-all ${s.is_active === false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#2a2a45] text-[#9ca3af]'}`}>
                 {s.is_active === false ? <><UserCheck size={11}/> Activate</> : <><UserX size={11}/> Deactivate</>}
               </button>
-              <button onClick={()=>navigate(`/admin/students/${s.id}`)}
-                className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
-                View →
-              </button>
+              {s.is_active === false ? (
+                <button onClick={e => { e.stopPropagation(); setDeleteConfirm(s) }}
+                  className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-red-500/10 text-red-400 transition-all">
+                  <Trash2 size={11} /> Delete
+                </button>
+              ) : (
+                <button onClick={()=>navigate(`/admin/students/${s.id}`)}
+                  className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
+                  View →
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -875,6 +947,36 @@ export default function Students() {
       <AddStudentModal open={addOpen} onClose={() => setAddOpen(false)} onSave={handleAdd} batches={batches} />
       <EditStudentModal open={!!editing} onClose={() => setEditing(null)} onSave={handleEdit} student={editing} batches={batches} />
       <BulkUploadModal open={bulkOpen} onClose={() => setBulkOpen(false)} onDone={fetchAll} batches={batches} profile={profile} />
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-base">Delete Student?</h3>
+                <p className="text-[#6b7280] text-xs mt-0.5">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-[#9ca3af] text-sm">
+              Permanently delete <span className="text-white font-semibold">{deleteConfirm.name}</span>{' '}
+              <span className="text-[#f0a500] font-mono text-xs">({deleteConfirm.student_id})</span>? All records linked to this student will also be removed.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-sm font-medium transition-all">
+                Cancel
+              </button>
+              <button onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                <Trash2 size={14} /> Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

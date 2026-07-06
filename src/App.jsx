@@ -51,20 +51,19 @@ function SessionGuard() {
   const { user, logout, loginAt } = useAuthStore()
 
   useEffect(() => {
-    // Auto-logout if 30 days have passed since login
     if (loginAt && Date.now() - loginAt > THIRTY_DAYS_MS) {
       logout()
       return
     }
 
-    // Sync Zustand with actual Supabase session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session && user) logout()
-    })
-
-    // Listen for Supabase auth events (token refresh failure, sign out, etc.)
+    // Use onAuthStateChange instead of getSession() — INITIAL_SESSION fires
+    // after the client has fully restored the session from storage, so it
+    // won't incorrectly return null during initialization and cause a logout.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if ((event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') && !session && user) {
+      if (event === 'INITIAL_SESSION' && !session && user) {
+        logout()
+      }
+      if (event === 'SIGNED_OUT' && user) {
         logout()
       }
     })
