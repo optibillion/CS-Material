@@ -310,9 +310,9 @@ export default function AdminIssue() {
     const total = regularToIssue.length + previousToIssue.length
     toast.success(`✓ ${total} book(s) recorded for ${selectedStudent.name}${bagWasNotIssued ? ' + bag' : ''}`)
     if (regularToIssue.length > 0)
-      logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${regularToIssue.length} book(s): ${regularToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')}`)
+      logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${regularToIssue.length} book(s): ${regularToIssue.map(id => { const b = books.find(b => b.id === id); if (!b) return null; const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › '); return lvl ? `${b.title} (${lvl})` : b.title }).filter(Boolean).join(', ')}`)
     if (previousToIssue.length > 0)
-      logAction('PREVIOUS_ISSUANCE', `${selectedStudent.name} (${selectedStudent.student_id}) — ${previousToIssue.length} book(s): ${previousToIssue.map(id => books.find(b => b.id === id)?.title).filter(Boolean).join(', ')}`)
+      logAction('PREVIOUS_ISSUANCE', `${selectedStudent.name} (${selectedStudent.student_id}) — ${previousToIssue.length} book(s): ${previousToIssue.map(id => { const b = books.find(b => b.id === id); if (!b) return null; const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › '); return lvl ? `${b.title} (${lvl})` : b.title }).filter(Boolean).join(', ')}`)
     setSelectedRegularBooks([]); setSelectedPreviousBooks([]); setIssueBag(false)
     const { data } = await supabase.from('issuances').select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
     setStudentIssuances(data?.map(i => i.book_id) || [])
