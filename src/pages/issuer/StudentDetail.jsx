@@ -137,6 +137,7 @@ export default function IssuerStudentDetail() {
           </div>
           {[
             { label: 'Batch', value: student.batches ? (student.batches.batch_code ? `${student.batches.batch_code} · ${student.batches.name}` : student.batches.name) : null },
+            { label: 'Medium', value: student.medium ? student.medium.charAt(0).toUpperCase() + student.medium.slice(1) : null },
             { label: 'Admitted', value: student.admission_date ? format(new Date(student.admission_date), 'dd MMM yyyy') : null },
           ].map(({ label, value }) => (
             <div key={label}>
