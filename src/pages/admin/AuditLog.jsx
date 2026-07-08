@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { format } from 'date-fns'
 import { Search } from 'lucide-react'
+import toast from 'react-hot-toast'
 
 const ACTION_COLORS = {
   // Students
@@ -13,6 +14,7 @@ const ACTION_COLORS = {
   BULK_STUDENT_UPLOAD: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
   // Books & Issuances
   BOOKS_ISSUED: 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30',
+  PREVIOUS_ISSUANCE: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30',
   ISSUANCE_REVERSED: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
   // Bag
   BAG_ISSUED: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30',
@@ -59,6 +61,13 @@ export default function AuditLog() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
 
+  // Backfill state
+  const [backfillLoading, setBackfillLoading] = useState(false)
+  const [backfillPreview, setBackfillPreview] = useState(null) // null | { updates[], sample[] }
+  const [backfillRunning, setBackfillRunning] = useState(false)
+  const [backfillProgress, setBackfillProgress] = useState(0)
+  const [backfillDone, setBackfillDone] = useState(false)
+
   useEffect(() => { fetchLogs() }, [])
 
   async function fetchLogs() {
@@ -70,6 +79,99 @@ export default function AuditLog() {
     setLogs(data || []); setLoading(false)
   }
 
+  // ── Backfill: dry-run, zero writes ──────────────────────────────────────
+  async function runBackfillDryRun() {
+    setBackfillLoading(true)
+    try {
+      // 1. Fetch ALL issuance log rows (no limit — we need every old entry)
+      const { data: logRows, error: logErr } = await supabase
+        .from('audit_logs')
+        .select('id, entity_type')
+        .in('action', ['BOOKS_ISSUED', 'PREVIOUS_ISSUANCE'])
+      if (logErr) throw logErr
+
+      // 2. Fetch all books
+      const { data: books, error: bookErr } = await supabase
+        .from('books')
+        .select('title, exam_level, unit, part')
+      if (bookErr) throw bookErr
+
+      // 3. Build title → book map
+      const bookMap = {}
+      for (const b of books || []) bookMap[b.title] = b
+
+      // 4. Compute what would change — READ ONLY, no writes
+      const updates = []
+      const sample = []
+
+      for (const row of logRows || []) {
+        const txt = row.entity_type || ''
+
+        // Isolate the book list: everything after "N book(s): "
+        const match = txt.match(/(\d+ book\(s\): )(.+)$/)
+        if (!match) continue
+
+        const bookList = match[2]
+
+        // SAFETY: skip rows already enriched (idempotent)
+        if (bookList.includes(' › ')) continue
+
+        // Enrich each comma-separated title
+        const enrichedTitles = bookList.split(', ').map(t => {
+          const b = bookMap[t]
+          if (!b) return t // title not in DB — leave exactly as-is
+          const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+          return lvl ? `${t} (${lvl})` : t
+        })
+
+        const newBookList = enrichedTitles.join(', ')
+        if (newBookList === bookList) continue // nothing enrichable — skip
+
+        const prefix = txt.slice(0, txt.indexOf(match[1])) + match[1]
+        const updatedText = prefix + newBookList
+
+        updates.push({ id: row.id, entity_type: updatedText })
+        if (sample.length < 3) sample.push({ before: txt, after: updatedText })
+      }
+
+      setBackfillPreview({ updates, sample })
+    } catch (e) {
+      toast.error('Failed to analyse logs: ' + e.message)
+    } finally {
+      setBackfillLoading(false)
+    }
+  }
+
+  // ── Backfill: apply — one row at a time by primary key ──────────────────
+  async function applyBackfill() {
+    if (!backfillPreview) return
+    setBackfillRunning(true)
+    setBackfillProgress(0)
+    const { updates } = backfillPreview
+    let failed = 0
+
+    for (let i = 0; i < updates.length; i++) {
+      const { id, entity_type } = updates[i]
+      // Only touches entity_type of this exact row — no other column, no deletes
+      const { error } = await supabase
+        .from('audit_logs')
+        .update({ entity_type })
+        .eq('id', id)
+      if (error) { failed++; console.warn('Backfill row failed:', id, error.message) }
+      setBackfillProgress(i + 1)
+    }
+
+    setBackfillRunning(false)
+    setBackfillPreview(null)
+    setBackfillDone(true)
+    if (failed === 0) {
+      toast.success(`Backfill complete — ${updates.length} entries updated`)
+    } else {
+      toast.error(`Done with ${failed} errors — ${updates.length - failed} updated`)
+    }
+    fetchLogs()
+  }
+
   const filtered = logs.filter(l =>
     l.action?.toLowerCase().includes(search.toLowerCase()) ||
     l.entity_type?.toLowerCase().includes(search.toLowerCase()) ||
@@ -78,11 +180,22 @@ export default function AuditLog() {
 
   return (
     <div className="p-4 md:p-6 space-y-5">
-      <div>
-        <h1 className="text-white text-2xl font-bold">Audit Log</h1>
-        <p className="text-[#6b7280] text-sm mt-0.5">
-          Every action by every user — append-only, cannot be edited or deleted.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-white text-2xl font-bold">Audit Log</h1>
+          <p className="text-[#6b7280] text-sm mt-0.5">
+            Every action by every user — append-only, cannot be edited or deleted.
+          </p>
+        </div>
+        {!backfillDone && (
+          <button
+            onClick={runBackfillDryRun}
+            disabled={backfillLoading}
+            className="flex-shrink-0 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white border border-[#3a3a55] transition-all disabled:opacity-50"
+          >
+            {backfillLoading ? 'Analysing…' : 'Backfill Book Details'}
+          </button>
+        )}
       </div>
 
       <div className="relative">
@@ -144,6 +257,66 @@ export default function AuditLog() {
           </div>
         ))}
       </div>
+
+      {/* ── Backfill confirmation modal ── */}
+      {backfillPreview && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-2xl w-full max-w-lg p-6 space-y-5">
+            <div>
+              <h2 className="text-white font-semibold text-base">Backfill Book Details</h2>
+              <p className="text-[#9ca3af] text-sm mt-1">
+                {backfillPreview.updates.length === 0
+                  ? 'All entries are already up to date. Nothing to change.'
+                  : <><span className="text-white font-medium">{backfillPreview.updates.length}</span> old log entries will be enriched with exam level · unit · part. No data will be deleted or overwritten — only the book name text gets extended.</>
+                }
+              </p>
+            </div>
+
+            {backfillPreview.sample.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-[#6b7280] text-xs font-medium uppercase tracking-wide">Preview (first {backfillPreview.sample.length})</p>
+                {backfillPreview.sample.map((s, i) => (
+                  <div key={i} className="bg-[#12121f] rounded-lg p-3 space-y-1.5 text-xs">
+                    <p className="text-[#6b7280]"><span className="text-[#9ca3af] font-medium">Before: </span>{s.before}</p>
+                    <p className="text-[#6b7280]"><span className="text-emerald-400 font-medium">After: &nbsp;</span>{s.after}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {backfillRunning && (
+              <div className="space-y-1.5">
+                <div className="w-full bg-[#2a2a45] rounded-full h-1.5">
+                  <div
+                    className="bg-[#bd0a0a] h-1.5 rounded-full transition-all"
+                    style={{ width: `${(backfillProgress / backfillPreview.updates.length) * 100}%` }}
+                  />
+                </div>
+                <p className="text-[#6b7280] text-xs text-center">Updating {backfillProgress} / {backfillPreview.updates.length}…</p>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setBackfillPreview(null)}
+                disabled={backfillRunning}
+                className="flex-1 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-sm font-medium transition-all disabled:opacity-40"
+              >
+                Cancel
+              </button>
+              {backfillPreview.updates.length > 0 && (
+                <button
+                  onClick={applyBackfill}
+                  disabled={backfillRunning}
+                  className="flex-1 py-2 rounded-lg bg-[#bd0a0a] hover:bg-red-700 text-white text-sm font-semibold transition-all disabled:opacity-50"
+                >
+                  {backfillRunning ? 'Running…' : `Confirm & Update ${backfillPreview.updates.length} Entries`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
