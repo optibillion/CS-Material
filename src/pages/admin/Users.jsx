@@ -62,6 +62,7 @@ function Modal({ open, onClose, onSave }) {
             <select value={form.role} onChange={e => set('role', e.target.value)}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]">
               <option value="issuer">Issuer</option>
+              <option value="accountant">Accountant</option>
               <option value="admin">Admin</option>
             </select>
           </div>
@@ -171,6 +172,14 @@ async function toggleActive(user) {
   fetchUsers()
 }
 
+async function setPermission(user, field, value) {
+  const newVal = user[field] === value ? null : value
+  const { error } = await supabase.from('users').update({ [field]: newVal }).eq('id', user.id)
+  if (error) { toast.error('Failed to update permission'); return }
+  logAction('USER_UPDATED', `${user.name} (@${user.username}) — ${field} set to ${newVal || 'none'}`)
+  fetchUsers()
+}
+
   const filtered = users.filter(u =>
     u.name?.toLowerCase().includes(search.toLowerCase()) ||
     u.username?.toLowerCase().includes(search.toLowerCase()) ||
@@ -198,14 +207,14 @@ async function toggleActive(user) {
         <table className="w-full min-w-[600px]">
           <thead>
             <tr className="border-b border-[#2a2a45]">
-              {['NAME', 'USERNAME', 'EMAIL', 'ROLE', 'STATUS', 'CREATED', 'ACTIONS'].map(h => (
+              {['NAME', 'USERNAME', 'EMAIL', 'ROLE', 'STATUS', 'CREATED', 'PERMISSIONS', 'ACTIONS'].map(h => (
                 <th key={h} className="text-left text-[#6b7280] text-xs font-medium px-5 py-3">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-[#2a2a45]">
             {loading ? [...Array(3)].map((_, i) => (
-              <tr key={i}>{[...Array(7)].map((_, j) => (
+              <tr key={i}>{[...Array(8)].map((_, j) => (
                 <td key={j} className="px-5 py-3"><div className="h-4 bg-[#2a2a45] rounded animate-pulse" /></td>
               ))}</tr>
             )) : filtered.map(u => (
@@ -214,7 +223,7 @@ async function toggleActive(user) {
                 <td className="px-5 py-3 text-[#f0a500] text-sm font-mono">{u.username}</td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{u.email || '—'}</td>
                 <td className="px-5 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${u.role === 'admin' ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30'}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${u.role === 'admin' ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : u.role === 'accountant' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' : 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30'}`}>
                     {u.role}
                   </span>
                 </td>
@@ -224,6 +233,36 @@ async function toggleActive(user) {
                   </span>
                 </td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{format(new Date(u.created_at), 'dd MMM yy')}</td>
+                <td className="px-5 py-3">
+                  {u.role === 'issuer' ? (
+                    <div className="space-y-2">
+                      <div>
+                        <p className="text-[#6b7280] text-xs mb-1">Allotments</p>
+                        <div className="flex gap-1">
+                          {['view', 'edit'].map(level => (
+                            <button key={level} onClick={() => setPermission(u, 'can_allot', level)}
+                              className={`text-xs px-2 py-0.5 rounded border font-medium capitalize transition-all ${u.can_allot === level ? (level === 'edit' ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40 text-red-400' : 'bg-blue-500/20 border-blue-500/40 text-blue-400') : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
+                              {level}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[#6b7280] text-xs mb-1">Inventory</p>
+                        <div className="flex gap-1">
+                          {['view', 'edit'].map(level => (
+                            <button key={level} onClick={() => setPermission(u, 'can_stock', level)}
+                              className={`text-xs px-2 py-0.5 rounded border font-medium capitalize transition-all ${u.can_stock === level ? (level === 'edit' ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40 text-red-400' : 'bg-blue-500/20 border-blue-500/40 text-blue-400') : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
+                              {level}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-[#4b5563] text-xs">—</span>
+                  )}
+                </td>
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2">
                     <button onClick={() => setResetTarget(u)}

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 import { format } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '../../store/authStore'
 
 const MEDIUM_LABELS = { hindi: 'Hindi', english: 'English', both: 'Both' }
 const MEDIUM_COLORS = { hindi: 'bg-orange-500/20 text-orange-400 border-orange-500/30', english: 'bg-blue-500/20 text-blue-400 border-blue-500/30', both: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }
@@ -292,6 +293,9 @@ const TYPE_STYLES = {
 
 export default function Inventory() {
   const navigate = useNavigate()
+  const { isAdmin, stockAccess } = useAuthStore()
+  const canEdit = isAdmin || stockAccess === 'edit'
+
   const [tab, setTab] = useState('stock')
   const [stock, setStock] = useState([])
   const [books, setBooks] = useState([])
@@ -410,7 +414,7 @@ export default function Inventory() {
           <h1 className="text-white text-2xl font-bold">Inventory</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{tab === 'stock' ? `${stock.length} stock entries` : `${movements.length} movements`}</p>
         </div>
-        {tab === 'stock' && (
+        {tab === 'stock' && canEdit && (
           <button onClick={() => { setEditing(null); setModalOpen(true) }}
             className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
             <Plus size={16} /> Add Stock
@@ -483,10 +487,12 @@ export default function Inventory() {
                         )}
                       </td>
                       <td className="px-5 py-3" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => { setEditing(s); setModalOpen(true) }}
-                          className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
-                          Edit
-                        </button>
+                        {canEdit && (
+                          <button onClick={() => { setEditing(s); setModalOpen(true) }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
+                            Edit
+                          </button>
+                        )}
                       </td>
                     </tr>
                   )
@@ -538,10 +544,10 @@ export default function Inventory() {
                     </div>
                   )}
                   <p className="text-[#6b7280] text-xs mb-3">{s.location}</p>
-                  <button onClick={e => { e.stopPropagation(); setEditing(s); setModalOpen(true) }}
+                  {canEdit && <button onClick={e => { e.stopPropagation(); setEditing(s); setModalOpen(true) }}
                     className="w-full text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
                     Edit Stock
-                  </button>
+                  </button>}
                   <button onClick={e => { e.stopPropagation(); setHistoryBook({ id: s.book_id, title: s.books?.title }) }}
                     className="w-full mt-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#12121f] border border-[#2a2a45] text-[#9ca3af] hover:text-white transition-all flex items-center justify-center gap-1">
                     <History size={11}/> View History

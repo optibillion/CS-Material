@@ -1,23 +1,16 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
-import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive } from 'lucide-react'
+import { Building2, Archive, LogOut, Menu, X } from 'lucide-react'
 import { useState } from 'react'
-import UniversalSearch from './UniversalSearch'
 
-const baseNavItems = [
-  { to: '/issuer', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/issuer/students', label: 'Students', icon: Users },
-  { to: '/issuer/sales', label: 'Record Sale', icon: ShoppingCart },
+const navItems = [
+  { to: '/accountant/allotments', label: 'Institutions', icon: Building2 },
+  { to: '/accountant/inventory', label: 'Inventory', icon: Archive },
 ]
 
-export default function IssuerLayout() {
-  const { profile, logout, allotmentAccess, stockAccess } = useAuthStore()
-  const navItems = [
-    ...baseNavItems,
-    ...(allotmentAccess ? [{ to: '/issuer/allotments', label: 'Institutions', icon: Building2 }] : []),
-    ...(stockAccess ? [{ to: '/issuer/inventory', label: 'Inventory', icon: Archive }] : []),
-  ]
+export default function AccountantLayout() {
+  const { profile, logout } = useAuthStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -42,14 +35,9 @@ export default function IssuerLayout() {
         </div>
 
         <div className="px-5 py-3 border-b border-[#2a2a45]">
-          <span className="text-xs bg-[#f0a500]/20 text-[#f0a500] border border-[#f0a500]/30 px-2 py-1 rounded-full font-medium">
-            Issuer
+          <span className="text-xs bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2 py-1 rounded-full font-medium">
+            Accountant
           </span>
-        </div>
-
-        {/* Universal Search */}
-        <div className="px-3 py-3 border-b border-[#2a2a45]">
-          <UniversalSearch />
         </div>
 
         <nav className="flex-1 py-3 px-3 space-y-0.5">
@@ -70,8 +58,8 @@ export default function IssuerLayout() {
 
         <div className="p-4 border-t border-[#2a2a45]">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-[#f0a500] flex items-center justify-center text-black text-sm font-bold">
-              {profile?.name?.[0]?.toUpperCase() || 'I'}
+            <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold">
+              {profile?.name?.[0]?.toUpperCase() || 'A'}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-white text-sm font-medium truncate">{profile?.name}</p>
@@ -86,16 +74,13 @@ export default function IssuerLayout() {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Mobile top bar */}
         <div className="lg:hidden flex items-center gap-3 px-4 py-3 bg-[#1a1a2e] border-b border-[#2a2a45]">
           <button onClick={() => setSidebarOpen(true)} className="text-[#9ca3af] hover:text-white flex-shrink-0">
             <Menu size={22} />
           </button>
-          <div className="flex-1">
-            <UniversalSearch />
-          </div>
-          <div className="w-8 h-8 rounded-full bg-[#f0a500] flex items-center justify-center text-black text-xs font-bold flex-shrink-0">
-            {profile?.name?.[0]?.toUpperCase() || 'I'}
+          <p className="text-white text-sm font-semibold flex-1">Champion Square</p>
+          <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {profile?.name?.[0]?.toUpperCase() || 'A'}
           </div>
         </div>
 
@@ -103,7 +88,6 @@ export default function IssuerLayout() {
           <Outlet />
         </main>
 
-        {/* Mobile bottom nav */}
         <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#1a1a2e] border-t border-[#2a2a45] z-30">
           <div className="flex items-center justify-around px-2 py-2">
             {navItems.map(({ to, label, icon: Icon, end }) => (

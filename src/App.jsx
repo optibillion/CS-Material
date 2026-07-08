@@ -9,6 +9,7 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 import Login from './pages/auth/Login'
 import AdminLayout from './components/AdminLayout'
 import IssuerLayout from './components/IssuerLayout'
+import AccountantLayout from './components/AccountantLayout'
 
 // Admin pages
 import AdminDashboard from './pages/admin/Dashboard'
@@ -26,6 +27,7 @@ import AdminBatches from './pages/admin/Batches'
 import AdminCourses from './pages/admin/Courses'
 import StudentDetail from './pages/admin/StudentDetail'
 import AdminIssue from './pages/admin/Issue'
+import InstitutionDetail from './pages/admin/InstitutionDetail'
 
 // Issuer pages
 import IssuerDashboard from './pages/issuer/Dashboard'
@@ -42,8 +44,16 @@ function ProtectedAdmin({ children }) {
 }
 
 function ProtectedIssuer({ children }) {
-  const { user } = useAuthStore()
+  const { user, isAccountant } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
+  if (isAccountant) return <Navigate to="/accountant/allotments" replace />
+  return children
+}
+
+function ProtectedAccountant({ children }) {
+  const { user, isAccountant } = useAuthStore()
+  if (!user) return <Navigate to="/login" replace />
+  if (!isAccountant) return <Navigate to="/issuer" replace />
   return children
 }
 
@@ -102,6 +112,7 @@ export default function App() {
           <Route path="issuances" element={<AdminIssuances />} />
           <Route path="sales" element={<AdminSales />} />
           <Route path="allotments" element={<AdminAllotments />} />
+          <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="reports" element={<AdminReports />} />
@@ -119,6 +130,17 @@ export default function App() {
           <Route path="issue" element={<IssuerIssue />} />
           <Route path="sales" element={<IssuerSales />} />
           <Route path="students/:id" element={<IssuerStudentDetail />} />
+          <Route path="allotments" element={<AdminAllotments />} />
+          <Route path="allotments/:id" element={<InstitutionDetail />} />
+          <Route path="inventory" element={<AdminInventory />} />
+        </Route>
+
+        {/* Accountant routes */}
+        <Route path="/accountant" element={<ProtectedAccountant><AccountantLayout /></ProtectedAccountant>}>
+          <Route index element={<Navigate to="/accountant/allotments" replace />} />
+          <Route path="allotments" element={<AdminAllotments />} />
+          <Route path="allotments/:id" element={<InstitutionDetail />} />
+          <Route path="inventory" element={<AdminInventory />} />
         </Route>
       </Routes>
     </BrowserRouter>
