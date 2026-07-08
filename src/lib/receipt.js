@@ -46,11 +46,6 @@ function buildReceiptHTML(data) {
   <div style="background:#bd0a0a;padding:30px 48px 26px;text-align:center">
     <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.4px">Champion Square</div>
     <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:3px;letter-spacing:0.5px">IAS Preparation Materials</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-top:18px">
-      <div style="flex:1;border-top:2px dashed rgba(255,255,255,0.35)"></div>
-      <span style="color:rgba(255,255,255,0.55);font-size:16px">✂</span>
-      <div style="flex:1;border-top:2px dashed rgba(255,255,255,0.35)"></div>
-    </div>
     <div style="display:inline-block;margin-top:14px;border:1.5px solid rgba(255,255,255,0.4);color:#fff;font-size:10px;font-weight:700;letter-spacing:3px;padding:5px 18px;border-radius:4px;background:rgba(255,255,255,0.1)">PURCHASE RECEIPT</div>
   </div>
 
