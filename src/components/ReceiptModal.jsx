@@ -1,5 +1,7 @@
-import { X, Download } from 'lucide-react'
-import { buildWhatsAppText, printReceipt } from '../lib/receipt'
+import { useState } from 'react'
+import { X, Download, Loader2 } from 'lucide-react'
+import { printReceipt, shareReceiptPDF } from '../lib/receipt'
+import toast from 'react-hot-toast'
 
 function WhatsAppIcon() {
   return (
@@ -10,7 +12,20 @@ function WhatsAppIcon() {
 }
 
 export default function ReceiptModal({ data, onClose }) {
+  const [sharing, setSharing] = useState(false)
+
   if (!data) return null
+
+  async function handleWhatsApp() {
+    setSharing(true)
+    try {
+      await shareReceiptPDF(data)
+    } catch (e) {
+      if (e?.name !== 'AbortError') toast.error('Could not share. Try downloading the PDF.')
+    } finally {
+      setSharing(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -19,7 +34,11 @@ export default function ReceiptModal({ data, onClose }) {
           <div>
             <p className="text-white font-semibold text-sm">{data.buyer_name}</p>
             {data.buyer_phone && <p className="text-[#6b7280] text-xs mt-0.5">{data.buyer_phone}</p>}
-            <p className="text-[#6b7280] text-xs mt-0.5">{data.books.length} book{data.books.length !== 1 ? 's' : ''}{data.total_price ? ` · ₹${data.total_price}` : ''}</p>
+            <p className="text-[#6b7280] text-xs mt-0.5">
+              {data.books.length} book{data.books.length !== 1 ? 's' : ''}
+              {data.total_price ? ` · ₹${data.total_price}` : ''}
+              {data.sold_by_name ? ` · by ${data.sold_by_name}` : ''}
+            </p>
             {data._fresh && <p className="text-emerald-400 text-xs mt-1">✓ Sale recorded</p>}
           </div>
           <button onClick={onClose} className="text-[#6b7280] hover:text-white p-1.5 rounded-lg hover:bg-[#2a2a45] transition-all flex-shrink-0 ml-3">
@@ -35,10 +54,11 @@ export default function ReceiptModal({ data, onClose }) {
             <span className="text-sm font-medium">Download</span>
           </button>
           <button
-            onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(buildWhatsAppText(data))}`, '_blank')}
-            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#25D366] hover:bg-[#1fb857] text-white transition-all">
-            <WhatsAppIcon />
-            <span className="text-sm font-semibold">WhatsApp</span>
+            onClick={handleWhatsApp}
+            disabled={sharing}
+            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#25D366] hover:bg-[#1fb857] disabled:opacity-70 text-white transition-all">
+            {sharing ? <Loader2 size={20} className="animate-spin" /> : <WhatsAppIcon />}
+            <span className="text-sm font-semibold">{sharing ? 'Preparing...' : 'WhatsApp'}</span>
           </button>
         </div>
       </div>

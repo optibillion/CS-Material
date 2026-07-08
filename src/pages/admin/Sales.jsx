@@ -137,6 +137,8 @@ export default function Sales() {
       }),
       total_price: parseFloat(finalPrice) || null,
       sold_at: now,
+      sold_by_name: profile?.name,
+      medium: saleMedium,
     })
     setRecordOpen(false); setRecording(false); setFinalPrice('')
     fetchSales()
@@ -252,7 +254,7 @@ export default function Sales() {
             {/* Actions */}
             <div className="flex gap-2 mt-3 pt-3 border-t border-[#2a2a45]">
               <button
-                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at })}
+                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name })}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
                 <Receipt size={13} /> View Receipt
               </button>
