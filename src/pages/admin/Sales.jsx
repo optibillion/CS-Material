@@ -202,25 +202,23 @@ export default function Sales() {
         )) : filteredTxns.length === 0 ? (
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales found</div>
         ) : filteredTxns.map(txn => (
-          <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${txn.all_returned ? 'opacity-50' : ''}`}>
-            <div className="flex items-start justify-between mb-3">
+          <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 max-w-2xl ${txn.all_returned ? 'opacity-60' : ''}`}>
+            {/* Header */}
+            <div className="flex items-start justify-between mb-1">
               <div>
                 <p className="text-white font-semibold text-sm">{txn.buyer_name}</p>
                 {txn.buyer_phone && <p className="text-[#6b7280] text-xs">{txn.buyer_phone}</p>}
-                <p className="text-[#6b7280] text-xs mt-0.5">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
               </div>
-              <div className="flex flex-col items-end gap-1.5">
+              <div className="flex items-center gap-2 flex-shrink-0 ml-4">
                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
                   {txn.all_returned ? 'Returned' : 'Sold'}
                 </span>
-                {txn.total_price && <p className="text-[#f0a500] font-bold text-base">₹{txn.total_price}</p>}
-                <button
-                  onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at })}
-                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-                  <Receipt size={10} /> Receipt
-                </button>
+                {txn.total_price && <span className="text-[#f0a500] font-bold text-sm">₹{txn.total_price}</span>}
               </div>
             </div>
+            <p className="text-[#4b5563] text-xs mb-3">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
+
+            {/* Books */}
             <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45] max-h-52 overflow-y-auto">
               {txn.books.map((b, i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2.5">
@@ -230,19 +228,28 @@ export default function Sales() {
                     <span className="text-white text-sm font-semibold">{[b.unit, b.part].filter(Boolean).join(' · ') || b.title}</span>
                     {(b.unit || b.part) && <p className="text-[#4b5563] text-[11px] truncate">{b.title}</p>}
                   </div>
-                  <span className="text-[#9ca3af] text-xs flex-shrink-0">x{b.qty}</span>
+                  <span className="text-[#9ca3af] text-xs flex-shrink-0">×{b.qty}</span>
                 </div>
               ))}
             </div>
             {txn.books.length > 4 && (
               <p className="text-[#4b5563] text-[10px] text-center mt-1">{txn.books.length} books · scroll to see all</p>
             )}
-            {!txn.all_returned && (
-              <button onClick={() => handleReturn(txn)}
-                className="mt-3 w-full flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all">
-                <RotateCcw size={12} /> Mark All as Returned
+
+            {/* Actions */}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at })}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
+                <Receipt size={13} /> View Receipt
               </button>
-            )}
+              {!txn.all_returned && (
+                <button onClick={() => handleReturn(txn)}
+                  className="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all">
+                  <RotateCcw size={12} /> Mark Returned
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
