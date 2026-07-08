@@ -172,17 +172,13 @@ export default function IssuerStudentDetail() {
               <BookOpen size={15} className={`flex-shrink-0 ${i.is_previous_issuance ? 'text-[#f0a500]' : 'text-[#bd0a0a]'}`} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  {(i.books?.exam_level||i.books?.unit||i.books?.part) ? (
-                    <p className="text-white text-sm font-semibold truncate">{[i.books?.exam_level,i.books?.unit,i.books?.part].filter(Boolean).join(' › ')}</p>
-                  ) : (
-                    <p className="text-white text-sm font-medium truncate">{i.books?.title}</p>
-                  )}
+                  <p className="text-white text-sm font-semibold truncate">{i.books?.title}</p>
                   {i.is_previous_issuance && (
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#f0a500]/20 text-[#f0a500] border border-[#f0a500]/30 flex-shrink-0">Prev.</span>
                   )}
                 </div>
                 {(i.books?.exam_level||i.books?.unit||i.books?.part) && (
-                  <p className="text-[#6b7280] text-xs truncate">{i.books?.title}</p>
+                  <p className="text-[#9ca3af] text-xs truncate">{[i.books?.exam_level,i.books?.unit,i.books?.part].filter(Boolean).join(' › ')}</p>
                 )}
                 <p className="text-[#6b7280] text-xs mt-0.5">
                   {i.books?.category} · {i.books?.medium} · by {i.users?.name || '—'} · {format(new Date(i.issued_at), 'dd MMM yy, hh:mm a')}
