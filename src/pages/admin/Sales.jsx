@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Search, RotateCcw, ShoppingCart, Check, Plus, Package, Receipt } from 'lucide-react'
@@ -43,13 +43,13 @@ export default function Sales() {
     setSales(data || []); setLoading(false)
   }
 
-  async function handleReturn(sale) {
-    const { error } = await supabase.from('sales').update({
-      is_returned: true, return_handled_by: profile?.id, returned_at: new Date().toISOString()
-    }).eq('id', sale.id)
+  async function handleReturn(txn) {
+    const { error } = await supabase.from('sales')
+      .update({ is_returned: true, return_handled_by: profile?.id, returned_at: new Date().toISOString() })
+      .in('id', txn.ids)
     if (error) { toast.error('Failed'); return }
     toast.success('Sale marked as returned')
-    logAction('SALE_RETURNED', `${sale.books?.title} — ${sale.buyer_name} (${sale.buyer_phone || 'no phone'})`)
+    logAction('SALE_RETURNED', `${txn.books.map(b => b.title).join(', ')} — ${txn.buyer_name} (${txn.buyer_phone || 'no phone'})`)
     fetchSales()
   }
 
@@ -141,18 +141,48 @@ export default function Sales() {
     fetchSales()
   }
 
-  const filtered = sales.filter(s =>
-    s.buyer_name?.toLowerCase().includes(search.toLowerCase()) ||
-    s.books?.title?.toLowerCase().includes(search.toLowerCase()) ||
-    s.buyer_phone?.includes(search)
-  )
+  const transactions = useMemo(() => {
+    const groups = {}
+    for (const s of sales) {
+      const key = `${s.sold_at}|${s.buyer_name}|${s.sold_by}`
+      if (!groups[key]) {
+        groups[key] = {
+          key,
+          buyer_name: s.buyer_name,
+          buyer_phone: s.buyer_phone,
+          sold_by_name: s.users?.name,
+          sold_at: s.sold_at,
+          total_price: null,
+          books: [],
+          ids: [],
+          all_returned: true,
+        }
+      }
+      const g = groups[key]
+      if (s.total_price) g.total_price = s.total_price
+      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty, is_returned: s.is_returned })
+      g.ids.push(s.id)
+      if (!s.is_returned) g.all_returned = false
+    }
+    return Object.values(groups).sort((a, b) => new Date(b.sold_at) - new Date(a.sold_at))
+  }, [sales])
+
+  const filteredTxns = transactions.filter(t => {
+    const q = search.toLowerCase()
+    return (
+      t.buyer_name?.toLowerCase().includes(q) ||
+      t.buyer_phone?.includes(search) ||
+      t.sold_by_name?.toLowerCase().includes(q) ||
+      t.books.some(b => b.title?.toLowerCase().includes(q))
+    )
+  })
 
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-white text-2xl font-bold">Sales</h1>
-          <p className="text-[#6b7280] text-sm mt-0.5">{sales.length} total sales</p>
+          <p className="text-[#6b7280] text-sm mt-0.5">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</p>
         </div>
         <button onClick={openRecordSale}
           className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
@@ -165,74 +195,51 @@ export default function Sales() {
           className="w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-lg pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
       </div>
 
-      {/* Desktop table */}
-      <div className="mob-table bg-[#1a1a2e] border border-[#2a2a45] rounded-xl overflow-hidden overflow-x-auto">
-        <table className="w-full min-w-[600px]">
-          <thead>
-            <tr className="border-b border-[#2a2a45]">
-              {['BUYER','BOOK','QTY','PRICE','SOLD BY','DATE','STATUS','ACTIONS'].map(h=>(
-                <th key={h} className="text-left text-[#6b7280] text-xs font-medium px-5 py-3">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[#2a2a45]">
-            {loading ? [...Array(4)].map((_,i)=>(
-              <tr key={i}>{[...Array(8)].map((_,j)=>(
-                <td key={j} className="px-5 py-3"><div className="h-4 bg-[#2a2a45] rounded animate-pulse"/></td>
-              ))}</tr>
-            )) : filtered.length===0 ? (
-              <tr><td colSpan={8} className="text-center text-[#6b7280] py-10 text-sm">No sales found</td></tr>
-            ) : filtered.map(s=>(
-              <tr key={s.id} className={`hover:bg-[#12121f] transition-colors ${s.is_returned?'opacity-50':''}`}>
-                <td className="px-5 py-3"><p className="text-white text-sm font-medium">{s.buyer_name}</p><p className="text-[#6b7280] text-xs">{s.buyer_phone}</p></td>
-                <td className="px-5 py-3">
-                  {s.books?.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{s.books.exam_level}</span>}
-                  <p className="text-white text-sm font-bold leading-snug">{[s.books?.unit, s.books?.part].filter(Boolean).join(' · ') || s.books?.title}</p>
-                  {(s.books?.unit || s.books?.part) && <p className="text-[#4b5563] text-[11px] truncate">{s.books?.title}</p>}
-                </td>
-                <td className="px-5 py-3 text-white text-sm">{s.qty}</td>
-                <td className="px-5 py-3 text-[#f0a500] text-sm font-medium">₹{s.total_price}</td>
-                <td className="px-5 py-3 text-[#9ca3af] text-sm">{s.users?.name||'—'}</td>
-                <td className="px-5 py-3 text-[#9ca3af] text-sm">{format(new Date(s.sold_at),'dd MMM yy')}</td>
-                <td className="px-5 py-3"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${s.is_returned?'bg-red-500/20 text-red-400 border-red-500/30':'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>{s.is_returned?'Returned':'Sold'}</span></td>
-                <td className="px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    {!s.is_returned && <button onClick={() => handleReturn(s)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12} />Return</button>}
-                    <button onClick={() => setReceiptData({ buyer_name: s.buyer_name, buyer_phone: s.buyer_phone, books: [{ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty }], total_price: s.total_price, sold_at: s.sold_at })} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all"><Receipt size={12} /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile cards */}
-      <div className="mob-cards space-y-3">
-        {loading ? [...Array(4)].map((_,i)=>(
-          <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 animate-pulse h-24"/>
-        )) : filtered.length===0 ? (
-          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 text-center text-[#6b7280] text-sm">No sales found</div>
-        ) : filtered.map(s=>(
-          <div key={s.id} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${s.is_returned?'opacity-50':''}`}>
-            <div className="flex items-start justify-between mb-2">
+      {/* Sales History — grouped by transaction */}
+      <div className="space-y-3">
+        {loading ? [...Array(3)].map((_, i) => (
+          <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 animate-pulse h-28" />
+        )) : filteredTxns.length === 0 ? (
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales found</div>
+        ) : filteredTxns.map(txn => (
+          <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${txn.all_returned ? 'opacity-50' : ''}`}>
+            <div className="flex items-start justify-between mb-3">
               <div>
-                <p className="text-white font-semibold text-sm">{s.buyer_name}</p>
-                <p className="text-[#6b7280] text-xs">{s.buyer_phone}</p>
+                <p className="text-white font-semibold text-sm">{txn.buyer_name}</p>
+                {txn.buyer_phone && <p className="text-[#6b7280] text-xs">{txn.buyer_phone}</p>}
+                <p className="text-[#6b7280] text-xs mt-0.5">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
               </div>
-              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${s.is_returned?'bg-red-500/20 text-red-400 border-red-500/30':'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>{s.is_returned?'Returned':'Sold'}</span>
+              <div className="flex flex-col items-end gap-1.5">
+                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
+                  {txn.all_returned ? 'Returned' : 'Sold'}
+                </span>
+                {txn.total_price && <p className="text-[#f0a500] font-bold text-base">₹{txn.total_price}</p>}
+                <button
+                  onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at })}
+                  className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                  <Receipt size={10} /> Receipt
+                </button>
+              </div>
             </div>
-            {s.books?.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{s.books.exam_level}</span>}
-            <p className="text-white text-sm font-bold leading-snug">{[s.books?.unit, s.books?.part].filter(Boolean).join(' · ') || s.books?.title}</p>
-            {(s.books?.unit || s.books?.part) && <p className="text-[#4b5563] text-[11px] truncate mb-1">{s.books?.title}</p>}
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[#6b7280] text-xs">qty {s.qty} · by {s.users?.name||'—'} · {format(new Date(s.sold_at),'dd MMM yy')}</p>
-              <p className="text-[#f0a500] text-sm font-semibold">₹{s.total_price}</p>
+            <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45]">
+              {txn.books.map((b, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                  <Check size={12} className="text-emerald-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    {b.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mr-1">{b.exam_level}</span>}
+                    <span className="text-white text-sm font-semibold">{[b.unit, b.part].filter(Boolean).join(' · ') || b.title}</span>
+                    {(b.unit || b.part) && <p className="text-[#4b5563] text-[11px] truncate">{b.title}</p>}
+                  </div>
+                  <span className="text-[#9ca3af] text-xs flex-shrink-0">x{b.qty}</span>
+                </div>
+              ))}
             </div>
-            <div className="flex gap-2">
-              {!s.is_returned && <button onClick={() => handleReturn(s)} className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12} />Return</button>}
-              <button onClick={() => setReceiptData({ buyer_name: s.buyer_name, buyer_phone: s.buyer_phone, books: [{ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty }], total_price: s.total_price, sold_at: s.sold_at })} className={`${s.is_returned ? 'w-full' : ''} flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all`}><Receipt size={12} /> Receipt</button>
-            </div>
+            {!txn.all_returned && (
+              <button onClick={() => handleReturn(txn)}
+                className="mt-3 w-full flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all">
+                <RotateCcw size={12} /> Mark All as Returned
+              </button>
+            )}
           </div>
         ))}
       </div>

@@ -4,24 +4,28 @@ export function buildWhatsAppText({ buyer_name, buyer_phone, books, total_price,
   const date = sold_at
     ? format(new Date(sold_at), 'dd MMM yyyy, hh:mm a')
     : format(new Date(), 'dd MMM yyyy, hh:mm a')
-  const bookLines = books.map(b => {
+  const bookLines = books.map((b, i) => {
     const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-    return `• ${b.title}${lvl ? ` (${lvl})` : ''} × ${b.qty || 1}`
+    return `${i + 1}. ${b.title}${lvl ? ` (${lvl})` : ''} × ${b.qty || 1}`
   }).join('\n')
   return [
-    `*Champion Square IAS — Sale Receipt*`,
+    `🎓 *Champion Square*`,
+    `📄 *Purchase Receipt*`,
     ``,
-    `📅 ${date}`,
+    `📅 Date: ${date}`,
     ``,
-    `*Buyer:* ${buyer_name}`,
-    buyer_phone ? `*Phone:* ${buyer_phone}` : null,
+    `👤 *Buyer Details*`,
+    `Name: ${buyer_name}`,
+    buyer_phone ? `Phone: ${buyer_phone}` : null,
     ``,
-    `*Books Purchased:*`,
+    `📚 *Books Purchased*`,
     bookLines,
-    total_price ? `\n*Total: ₹${total_price}*` : null,
     ``,
-    `Thank you for your purchase! 🙏`,
-    `— Champion Square IAS`,
+    total_price ? `💰 *Total Amount: ₹${total_price}*` : null,
+    ``,
+    `─────────────────────`,
+    `Thank you for choosing Champion Square! 🙏`,
+    `For queries, contact us.`,
   ].filter(l => l !== null).join('\n')
 }
 
@@ -31,14 +35,13 @@ export function printReceipt({ buyer_name, buyer_phone, books, total_price, sold
     : format(new Date(), 'dd MMM yyyy, hh:mm a')
   const bookRows = books.map((b, i) => {
     const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-    return `<div class="book-item">
-      <div class="book-num">${i + 1}.</div>
-      <div class="book-details">
-        <div class="book-title">${b.title}</div>
+    return `<tr>
+      <td>
+        <div class="book-title">${i + 1}. ${b.title}</div>
         ${lvl ? `<div class="book-meta">${lvl}</div>` : ''}
-        <div class="book-qty">Qty: ${b.qty || 1}</div>
-      </div>
-    </div>`
+      </td>
+      <td class="book-qty">${b.qty || 1}</td>
+    </tr>`
   }).join('')
 
   const win = window.open('', '_blank')
@@ -46,49 +49,89 @@ export function printReceipt({ buyer_name, buyer_phone, books, total_price, sold
   win.document.write(`<!DOCTYPE html>
 <html>
 <head>
-  <title>Sale Receipt</title>
+  <title>Purchase Receipt — Champion Square</title>
   <meta charset="utf-8" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; padding: 24px; max-width: 380px; margin: 0 auto; color: #222; font-size: 13px; }
-    .header { text-align: center; padding-bottom: 14px; margin-bottom: 14px; border-bottom: 2px solid #bd0a0a; }
-    .brand { font-size: 17px; font-weight: bold; color: #bd0a0a; letter-spacing: 0.3px; }
-    .tagline { font-size: 10px; color: #888; margin-top: 3px; }
-    .label { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 12px; margin-bottom: 3px; }
-    .value { font-size: 13px; font-weight: 600; color: #222; }
-    .sub { font-size: 12px; color: #555; }
-    .divider { border-top: 1px dashed #ddd; margin: 10px 0; }
-    .section-title { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
-    .book-item { display: flex; gap: 6px; padding: 7px 0; border-bottom: 1px solid #f0f0f0; }
-    .book-item:last-child { border-bottom: none; }
-    .book-num { color: #888; font-size: 12px; flex-shrink: 0; padding-top: 1px; }
-    .book-title { font-weight: 600; font-size: 13px; color: #222; }
-    .book-meta { font-size: 11px; color: #888; margin-top: 2px; }
-    .book-qty { font-size: 11px; color: #555; margin-top: 2px; }
-    .total-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0 0; }
-    .total-label { font-size: 12px; color: #888; }
-    .total-value { font-size: 17px; font-weight: bold; color: #bd0a0a; }
-    .footer { text-align: center; font-size: 10px; color: #aaa; margin-top: 18px; padding-top: 10px; border-top: 1px solid #eee; line-height: 1.6; }
-    @media print { body { padding: 10px; } }
+    body { font-family: 'Arial', sans-serif; background: #fff; color: #1a1a1a; font-size: 13px; }
+    .page { max-width: 420px; margin: 0 auto; padding: 32px 28px; }
+    .header { text-align: center; margin-bottom: 24px; }
+    .brand { font-size: 22px; font-weight: 800; color: #bd0a0a; letter-spacing: -0.3px; }
+    .receipt-label { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase; color: #555; border: 1px solid #ddd; padding: 3px 10px; border-radius: 20px; }
+    .receipt-no { font-size: 10px; color: #aaa; margin-top: 6px; }
+    .divider-solid { border: none; border-top: 2px solid #bd0a0a; margin: 0; }
+    .divider-dashed { border: none; border-top: 1px dashed #ddd; margin: 16px 0; }
+    .section { margin: 16px 0; }
+    .section-label { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #bd0a0a; margin-bottom: 6px; }
+    .info-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 3px; }
+    .info-key { font-size: 11px; color: #888; }
+    .info-val { font-size: 13px; font-weight: 600; color: #1a1a1a; text-align: right; }
+    .books-table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+    .books-table th { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: #aaa; font-weight: 600; padding: 0 0 6px; text-align: left; border-bottom: 1px solid #eee; }
+    .books-table th:last-child { text-align: right; }
+    .books-table td { padding: 8px 0; vertical-align: top; border-bottom: 1px solid #f5f5f5; font-size: 12px; }
+    .books-table tr:last-child td { border-bottom: none; }
+    .book-title { font-weight: 600; color: #1a1a1a; line-height: 1.3; }
+    .book-meta { font-size: 10px; color: #999; margin-top: 2px; }
+    .book-qty { text-align: right; font-weight: 600; color: #444; white-space: nowrap; padding-left: 12px; }
+    .total-box { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 12px 16px; margin-top: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .total-label { font-size: 11px; color: #888; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .total-value { font-size: 20px; font-weight: 800; color: #bd0a0a; }
+    .footer { margin-top: 28px; text-align: center; }
+    .footer-line { border-top: 1px solid #eee; padding-top: 14px; }
+    .footer-text { font-size: 11px; color: #aaa; line-height: 1.8; }
+    .thank-you { font-size: 13px; font-weight: 700; color: #333; margin-bottom: 4px; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .page { padding: 20px; } }
   </style>
 </head>
 <body>
+<div class="page">
   <div class="header">
-    <div class="brand">Champion Square IAS</div>
-    <div class="tagline">Sale Receipt</div>
+    <div class="brand">Champion Square</div>
+    <div class="receipt-label">Purchase Receipt</div>
+    <div class="receipt-no">${date}</div>
   </div>
-  <div class="label">Date</div>
-  <div class="value">${date}</div>
-  <div class="divider"></div>
-  <div class="label">Buyer</div>
-  <div class="value">${buyer_name}</div>
-  ${buyer_phone ? `<div class="sub">${buyer_phone}</div>` : ''}
-  <div class="divider"></div>
-  <div class="section-title">Books Purchased</div>
-  ${bookRows}
-  ${total_price ? `<div class="divider"></div><div class="total-row"><span class="total-label">Total Amount</span><span class="total-value">₹${total_price}</span></div>` : ''}
-  <div class="footer">Champion Square IAS · Indore<br>सटीकता, अनुभव और भरोसे का संगम</div>
-  <script>window.onload = function() { window.print(); }<\/script>
+  <hr class="divider-solid" />
+
+  <div class="section">
+    <div class="section-label">Buyer Details</div>
+    <div class="info-row">
+      <span class="info-key">Name</span>
+      <span class="info-val">${buyer_name}</span>
+    </div>
+    ${buyer_phone ? `<div class="info-row"><span class="info-key">Phone</span><span class="info-val">${buyer_phone}</span></div>` : ''}
+  </div>
+
+  <hr class="divider-dashed" />
+
+  <div class="section">
+    <div class="section-label">Books Purchased</div>
+    <table class="books-table">
+      <thead>
+        <tr>
+          <th>Book / Details</th>
+          <th>Qty</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${bookRows}
+      </tbody>
+    </table>
+  </div>
+
+  ${total_price ? `<div class="total-box"><span class="total-label">Total Amount</span><span class="total-value">₹${total_price}</span></div>` : ''}
+
+  <div class="footer">
+    <div class="footer-line">
+      <div class="thank-you">Thank you for your purchase!</div>
+      <div class="footer-text">
+        Champion Square · IAS Preparation Materials<br>
+        सटीकता, अनुभव और भरोसे का संगम
+      </div>
+    </div>
+  </div>
+</div>
+<script>window.onload = function() { window.print(); }<\/script>
 </body>
 </html>`)
   win.document.close()
