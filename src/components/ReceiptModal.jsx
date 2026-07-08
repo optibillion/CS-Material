@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Download, Loader2 } from 'lucide-react'
-import { printReceipt, shareReceiptPDF } from '../lib/receipt'
+import { printReceipt, generateReceiptBlob, shareReceiptPDF } from '../lib/receipt'
 import toast from 'react-hot-toast'
 
 function WhatsAppIcon() {
@@ -12,19 +12,36 @@ function WhatsAppIcon() {
 }
 
 export default function ReceiptModal({ data, onClose }) {
+  const [pdfBlob, setPdfBlob] = useState(null)
   const [sharing, setSharing] = useState(false)
+
+  // Pre-generate PDF in background as soon as modal opens
+  useEffect(() => {
+    if (!data) return
+    setPdfBlob(null)
+    generateReceiptBlob(data)
+      .then(blob => setPdfBlob(blob))
+      .catch(() => {})
+  }, [data])
 
   if (!data) return null
 
   async function handleWhatsApp() {
-    setSharing(true)
-    try {
-      await shareReceiptPDF(data)
-    } catch (e) {
-      if (e?.name !== 'AbortError') toast.error('Could not share. Try downloading the PDF.')
-    } finally {
+    let blob = pdfBlob
+    if (!blob) {
+      // Still generating — wait for it
+      setSharing(true)
+      try {
+        blob = await generateReceiptBlob(data)
+      } catch {
+        toast.error('Could not generate PDF')
+        setSharing(false)
+        return
+      }
       setSharing(false)
     }
+    // Call share immediately — no async gap between user tap and share call
+    await shareReceiptPDF(blob)
   }
 
   return (
@@ -58,9 +75,15 @@ export default function ReceiptModal({ data, onClose }) {
             disabled={sharing}
             className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#25D366] hover:bg-[#1fb857] disabled:opacity-70 text-white transition-all">
             {sharing ? <Loader2 size={20} className="animate-spin" /> : <WhatsAppIcon />}
-            <span className="text-sm font-semibold">{sharing ? 'Preparing...' : 'WhatsApp'}</span>
+            <span className="text-sm font-semibold">
+              {sharing ? 'Preparing...' : pdfBlob ? 'WhatsApp' : 'WhatsApp'}
+            </span>
           </button>
         </div>
+
+        {!pdfBlob && !sharing && (
+          <p className="text-[#4b5563] text-[10px] text-center mt-2">Preparing PDF in background…</p>
+        )}
       </div>
     </div>
   )

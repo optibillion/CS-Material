@@ -44,8 +44,7 @@ function buildReceiptHTML(data) {
 
   <!-- Header -->
   <div style="background:#bd0a0a;padding:30px 48px 26px;text-align:center">
-    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.4px">Champion Square</div>
-    <div style="font-size:11px;color:rgba(255,255,255,0.7);margin-top:3px;letter-spacing:0.5px">IAS Preparation Materials</div>
+    <div style="font-size:26px;font-weight:800;color:#fff;letter-spacing:-0.4px">Champion Square Notes</div>
     <div style="display:inline-block;margin-top:14px;border:1.5px solid rgba(255,255,255,0.4);color:#fff;font-size:10px;font-weight:700;letter-spacing:3px;padding:5px 18px;border-radius:4px;background:rgba(255,255,255,0.1)">PURCHASE RECEIPT</div>
   </div>
 
@@ -139,10 +138,9 @@ export function printReceipt(data) {
   win.document.close()
 }
 
-export async function shareReceiptPDF(data) {
+export async function generateReceiptBlob(data) {
   const html = buildReceiptHTML(data)
 
-  // A4 at 96 dpi = 794 × 1123 px
   const iframe = document.createElement('iframe')
   iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden'
   document.body.appendChild(iframe)
@@ -173,18 +171,27 @@ export async function shareReceiptPDF(data) {
   const imgData = canvas.toDataURL('image/jpeg', 0.92)
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+  return pdf.output('blob')
+}
 
-  const blob = pdf.output('blob')
+function downloadBlob(blob) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'Champion-Square-Receipt.pdf'
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+export async function shareReceiptPDF(blob) {
   const file = new File([blob], 'Champion-Square-Receipt.pdf', { type: 'application/pdf' })
-
-  if (navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ files: [file], title: 'Purchase Receipt — Champion Square' })
-  } else {
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'Champion-Square-Receipt.pdf'
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  try {
+    if (navigator.share) {
+      await navigator.share({ files: [file], title: 'Purchase Receipt — Champion Square' })
+    } else {
+      downloadBlob(blob)
+    }
+  } catch (e) {
+    if (e?.name !== 'AbortError') downloadBlob(blob)
   }
 }
