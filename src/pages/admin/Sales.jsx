@@ -30,6 +30,7 @@ export default function Sales() {
   const [saleExamFilter, setSaleExamFilter] = useState('all')
   const [saleUnitFilter, setSaleUnitFilter] = useState('all')
   const [saleBookSearch, setSaleBookSearch] = useState('')
+  const [expandedTxns, setExpandedTxns] = useState({})
 
   const total = parseFloat(finalPrice) || 0
 
@@ -219,23 +220,34 @@ export default function Sales() {
             </div>
 
             {/* Books */}
-            <div className="mt-3 border-t border-[#2a2a45] divide-y divide-[#2a2a45] max-h-52 overflow-y-auto">
-              {txn.books.map((b, i) => (
-                <div key={i} className="flex items-start gap-2 py-2">
-                  <Check size={11} className="text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium leading-snug truncate">{b.title}</p>
-                    {[b.exam_level, b.unit, b.part].filter(Boolean).length > 0 && (
-                      <p className="text-[#6b7280] text-[11px] truncate">{[b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')}</p>
-                    )}
+            {(() => {
+              const isExp = !!expandedTxns[txn.key]
+              const shown = isExp ? txn.books : txn.books.slice(0, 4)
+              return (
+                <>
+                  <div className="mt-3 border-t border-[#2a2a45] divide-y divide-[#2a2a45]">
+                    {shown.map((b, i) => (
+                      <div key={i} className="flex items-start gap-2 py-2">
+                        <Check size={11} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium leading-snug truncate">{b.title}</p>
+                          {[b.exam_level, b.unit, b.part].filter(Boolean).length > 0 && (
+                            <p className="text-[#6b7280] text-[11px] truncate">{[b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')}</p>
+                          )}
+                        </div>
+                        <span className="text-[#9ca3af] text-xs flex-shrink-0 mt-0.5">×{b.qty}</span>
+                      </div>
+                    ))}
                   </div>
-                  <span className="text-[#9ca3af] text-xs flex-shrink-0 mt-0.5">×{b.qty}</span>
-                </div>
-              ))}
-            </div>
-            {txn.books.length > 5 && (
-              <p className="text-[#4b5563] text-[10px] text-center mt-1">{txn.books.length} books — scroll to see all</p>
-            )}
+                  {txn.books.length > 4 && (
+                    <button onClick={() => setExpandedTxns(prev => ({ ...prev, [txn.key]: !isExp }))}
+                      className="mt-1 text-[#6b7280] hover:text-white text-xs w-full text-center py-1 transition-colors">
+                      {isExp ? 'Show less' : `+${txn.books.length - 4} more books`}
+                    </button>
+                  )}
+                </>
+              )
+            })()}
 
             {/* Actions */}
             <div className="flex gap-2 mt-3 pt-3 border-t border-[#2a2a45]">
