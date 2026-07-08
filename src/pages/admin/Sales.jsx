@@ -202,42 +202,43 @@ export default function Sales() {
         )) : filteredTxns.length === 0 ? (
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales found</div>
         ) : filteredTxns.map(txn => (
-          <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 max-w-2xl ${txn.all_returned ? 'opacity-60' : ''}`}>
+          <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${txn.all_returned ? 'opacity-60' : ''}`}>
             {/* Header */}
             <div className="flex items-start justify-between mb-1">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-white font-semibold text-sm">{txn.buyer_name}</p>
                 {txn.buyer_phone && <p className="text-[#6b7280] text-xs">{txn.buyer_phone}</p>}
+                <p className="text-[#4b5563] text-xs mt-0.5">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
                   {txn.all_returned ? 'Returned' : 'Sold'}
                 </span>
-                {txn.total_price && <span className="text-[#f0a500] font-bold text-sm">₹{txn.total_price}</span>}
+                {txn.total_price && <span className="text-[#f0a500] font-bold text-sm whitespace-nowrap">₹{txn.total_price}</span>}
               </div>
             </div>
-            <p className="text-[#4b5563] text-xs mb-3">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
 
             {/* Books */}
-            <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45] max-h-52 overflow-y-auto">
+            <div className="mt-3 border-t border-[#2a2a45] divide-y divide-[#2a2a45] max-h-52 overflow-y-auto">
               {txn.books.map((b, i) => (
-                <div key={i} className="flex items-center gap-3 px-3 py-2.5">
-                  <Check size={12} className="text-emerald-400 flex-shrink-0" />
+                <div key={i} className="flex items-start gap-2 py-2">
+                  <Check size={11} className="text-emerald-400 flex-shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
-                    {b.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mr-1">{b.exam_level}</span>}
-                    <span className="text-white text-sm font-semibold">{[b.unit, b.part].filter(Boolean).join(' · ') || b.title}</span>
-                    {(b.unit || b.part) && <p className="text-[#4b5563] text-[11px] truncate">{b.title}</p>}
+                    <p className="text-white text-sm font-medium leading-snug truncate">{b.title}</p>
+                    {[b.exam_level, b.unit, b.part].filter(Boolean).length > 0 && (
+                      <p className="text-[#6b7280] text-[11px] truncate">{[b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')}</p>
+                    )}
                   </div>
-                  <span className="text-[#9ca3af] text-xs flex-shrink-0">×{b.qty}</span>
+                  <span className="text-[#9ca3af] text-xs flex-shrink-0 mt-0.5">×{b.qty}</span>
                 </div>
               ))}
             </div>
-            {txn.books.length > 4 && (
-              <p className="text-[#4b5563] text-[10px] text-center mt-1">{txn.books.length} books · scroll to see all</p>
+            {txn.books.length > 5 && (
+              <p className="text-[#4b5563] text-[10px] text-center mt-1">{txn.books.length} books — scroll to see all</p>
             )}
 
             {/* Actions */}
-            <div className="flex gap-2 mt-3">
+            <div className="flex gap-2 mt-3 pt-3 border-t border-[#2a2a45]">
               <button
                 onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at })}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
