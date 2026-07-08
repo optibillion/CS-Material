@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Search, RotateCcw, ShoppingCart, Check, Plus, Package } from 'lucide-react'
+import { Search, RotateCcw, ShoppingCart, Check, Plus, Package, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
+import ReceiptModal from '../../components/ReceiptModal'
 
 export default function Sales() {
   const { profile } = useAuthStore()
@@ -25,6 +26,7 @@ export default function Sales() {
   const [finalPrice, setFinalPrice] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [receiptData, setReceiptData] = useState(null)
   const [saleExamFilter, setSaleExamFilter] = useState('all')
   const [saleUnitFilter, setSaleUnitFilter] = useState('all')
   const [saleBookSearch, setSaleBookSearch] = useState('')
@@ -124,6 +126,17 @@ export default function Sales() {
     const summary = selectedBooks.map(b => `${books.find(bk => bk.id === b.id)?.title} x${b.qty}`).join(', ')
     logAction('SALE_RECORDED', `${buyerName.trim()} (${buyerPhone || 'no phone'}) — ${summary} — ₹${total.toFixed(0)}`)
     toast.success(`Sale recorded — ${selectedBooks.length} book(s)`)
+    setReceiptData({
+      _fresh: true,
+      buyer_name: buyerName.trim(),
+      buyer_phone: buyerPhone.trim() || null,
+      books: selectedBooks.map(b => {
+        const book = books.find(bk => bk.id === b.id)
+        return { title: book?.title, exam_level: book?.exam_level, unit: book?.unit, part: book?.part, qty: parseInt(b.qty) || 1 }
+      }),
+      total_price: parseFloat(finalPrice) || null,
+      sold_at: now,
+    })
     setRecordOpen(false); setRecording(false); setFinalPrice('')
     fetchSales()
   }
@@ -182,7 +195,12 @@ export default function Sales() {
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{s.users?.name||'—'}</td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{format(new Date(s.sold_at),'dd MMM yy')}</td>
                 <td className="px-5 py-3"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${s.is_returned?'bg-red-500/20 text-red-400 border-red-500/30':'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>{s.is_returned?'Returned':'Sold'}</span></td>
-                <td className="px-5 py-3">{!s.is_returned&&<button onClick={()=>handleReturn(s)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12}/>Return</button>}</td>
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-2">
+                    {!s.is_returned && <button onClick={() => handleReturn(s)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12} />Return</button>}
+                    <button onClick={() => setReceiptData({ buyer_name: s.buyer_name, buyer_phone: s.buyer_phone, books: [{ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty }], total_price: s.total_price, sold_at: s.sold_at })} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all"><Receipt size={12} /></button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -211,10 +229,15 @@ export default function Sales() {
               <p className="text-[#6b7280] text-xs">qty {s.qty} · by {s.users?.name||'—'} · {format(new Date(s.sold_at),'dd MMM yy')}</p>
               <p className="text-[#f0a500] text-sm font-semibold">₹{s.total_price}</p>
             </div>
-            {!s.is_returned&&<button onClick={()=>handleReturn(s)} className="w-full flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12}/>Mark as Returned</button>}
+            <div className="flex gap-2">
+              {!s.is_returned && <button onClick={() => handleReturn(s)} className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12} />Return</button>}
+              <button onClick={() => setReceiptData({ buyer_name: s.buyer_name, buyer_phone: s.buyer_phone, books: [{ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty }], total_price: s.total_price, sold_at: s.sold_at })} className={`${s.is_returned ? 'w-full' : ''} flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all`}><Receipt size={12} /> Receipt</button>
+            </div>
           </div>
         ))}
       </div>
+      <ReceiptModal data={receiptData} onClose={() => setReceiptData(null)} />
+
       {/* Record Sale Modal */}
       {recordOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">

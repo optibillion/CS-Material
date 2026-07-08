@@ -3,8 +3,9 @@ import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
-import { Check, ShoppingCart, Package, Search, RotateCcw } from 'lucide-react'
+import { Check, ShoppingCart, Package, Search, RotateCcw, Receipt } from 'lucide-react'
 import { logAction } from '../../lib/audit'
+import ReceiptModal from '../../components/ReceiptModal'
 
 export default function IssuerSales() {
   const { profile } = useAuthStore()
@@ -28,6 +29,7 @@ export default function IssuerSales() {
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
   const [bookSearch, setBookSearch] = useState('')
+  const [receiptData, setReceiptData] = useState(null)
 
   useEffect(() => { fetchData() }, [])
 
@@ -110,6 +112,17 @@ export default function IssuerSales() {
     const summary = selectedBooks.map(b => `${books.find(bk => bk.id === b.id)?.title} x${b.qty}`).join(', ')
     logAction('SALE_RECORDED', `${buyerName.trim()} (${buyerPhone || 'no phone'}) — ${summary} — ₹${total.toFixed(0)}`)
     toast.success(`Sale recorded — ${selectedBooks.length} book(s) sold to ${buyerName}`)
+    setReceiptData({
+      _fresh: true,
+      buyer_name: buyerName.trim(),
+      buyer_phone: buyerPhone.trim() || null,
+      books: selectedBooks.map(b => {
+        const book = books.find(bk => bk.id === b.id)
+        return { title: book?.title, exam_level: book?.exam_level, unit: book?.unit, part: book?.part, qty: parseInt(b.qty) || 1 }
+      }),
+      total_price: parseFloat(finalPrice) || null,
+      sold_at: now,
+    })
     setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setSelectedBooks([]); setFinalPrice('')
     fetchData()
     setSubmitting(false)
@@ -362,6 +375,11 @@ export default function IssuerSales() {
                     {txn.all_returned ? 'Returned' : 'Sold'}
                   </span>
                   {txn.total_price && <p className="text-[#f0a500] font-bold text-base">₹{txn.total_price}</p>}
+                  <button
+                    onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at })}
+                    className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                    <Receipt size={10} /> Receipt
+                  </button>
                 </div>
               </div>
 
@@ -391,6 +409,8 @@ export default function IssuerSales() {
           ))}
         </div>
       </div>
+
+      <ReceiptModal data={receiptData} onClose={() => setReceiptData(null)} />
 
       {/* Confirmation Modal */}
       {confirmOpen && (
