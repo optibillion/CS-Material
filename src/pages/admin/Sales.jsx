@@ -221,7 +221,7 @@ export default function Sales() {
                 </button>
               </div>
             </div>
-            <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45]">
+            <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45] max-h-52 overflow-y-auto">
               {txn.books.map((b, i) => (
                 <div key={i} className="flex items-center gap-3 px-3 py-2.5">
                   <Check size={12} className="text-emerald-400 flex-shrink-0" />
@@ -234,6 +234,9 @@ export default function Sales() {
                 </div>
               ))}
             </div>
+            {txn.books.length > 4 && (
+              <p className="text-[#4b5563] text-[10px] text-center mt-1">{txn.books.length} books · scroll to see all</p>
+            )}
             {!txn.all_returned && (
               <button onClick={() => handleReturn(txn)}
                 className="mt-3 w-full flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all">

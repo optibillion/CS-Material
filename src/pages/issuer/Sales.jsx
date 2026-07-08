@@ -384,7 +384,7 @@ export default function IssuerSales() {
               </div>
 
               {/* Books list */}
-              <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45]">
+              <div className="bg-[#12121f] rounded-lg divide-y divide-[#2a2a45] max-h-52 overflow-y-auto">
                 {txn.books.map((b, i) => (
                   <div key={i} className="flex items-center gap-3 px-3 py-2.5">
                     <Check size={12} className="text-emerald-400 flex-shrink-0" />
@@ -397,6 +397,9 @@ export default function IssuerSales() {
                   </div>
                 ))}
               </div>
+              {txn.books.length > 4 && (
+                <p className="text-[#4b5563] text-[10px] text-center mt-1">{txn.books.length} books · scroll to see all</p>
+              )}
 
               {/* Return button for managers */}
               {canModify && !txn.all_returned && (
