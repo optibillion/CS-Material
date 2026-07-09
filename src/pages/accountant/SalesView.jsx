@@ -65,6 +65,8 @@ export default function SalesView() {
 
   const dayTotalQty = filteredTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
   const dayTotalRevenue = filteredTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const cashRevenue = filteredTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const onlineRevenue = filteredTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -86,18 +88,36 @@ export default function SalesView() {
       </div>
 
       {/* Day summary */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
-          <p className="text-[#6b7280] text-xs">Transactions</p>
-          <p className="text-white text-2xl font-bold mt-0.5">{filteredTxns.length}</p>
+      <div className="space-y-3">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+            <p className="text-[#6b7280] text-xs">Transactions</p>
+            <p className="text-white text-2xl font-bold mt-0.5">{filteredTxns.length}</p>
+          </div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+            <p className="text-[#6b7280] text-xs">Books Sold</p>
+            <p className="text-white text-2xl font-bold mt-0.5">{dayTotalQty}</p>
+          </div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+            <p className="text-[#6b7280] text-xs">Revenue</p>
+            <p className="text-[#f0a500] text-2xl font-bold mt-0.5">₹{dayTotalRevenue.toFixed(0)}</p>
+          </div>
         </div>
-        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
-          <p className="text-[#6b7280] text-xs">Books Sold</p>
-          <p className="text-white text-2xl font-bold mt-0.5">{dayTotalQty}</p>
-        </div>
-        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
-          <p className="text-[#6b7280] text-xs">Revenue</p>
-          <p className="text-[#f0a500] text-2xl font-bold mt-0.5">₹{dayTotalRevenue.toFixed(0)}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[#6b7280] text-xs">Cash</p>
+              <p className="text-white text-xl font-bold mt-0.5">₹{cashRevenue.toFixed(0)}</p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#2a2a45] text-[#9ca3af] border border-[#2a2a45]">Cash</span>
+          </div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 flex items-center justify-between">
+            <div>
+              <p className="text-[#6b7280] text-xs">Online</p>
+              <p className="text-white text-xl font-bold mt-0.5">₹{onlineRevenue.toFixed(0)}</p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">Online</span>
+          </div>
         </div>
       </div>
 
