@@ -206,8 +206,8 @@ export default function AdminIssue() {
   }
 
   async function handleSetMedium(medium) {
-    const { error } = await supabase.from('students').update({ medium }).eq('id', selectedStudent.id)
-    if (error) { toast.error('Failed to save medium'); return }
+    const { data, error } = await supabase.from('students').update({ medium }).eq('id', selectedStudent.id).select('id')
+    if (error || !data?.length) { toast.error('Failed to save medium — please try again'); return }
     toast.success(`Medium set to ${medium}`)
     logAction('STUDENT_UPDATED', `${selectedStudent.name} (${selectedStudent.student_id}) — medium set to ${medium}`)
     setSelectedStudent(prev => ({ ...prev, medium }))
