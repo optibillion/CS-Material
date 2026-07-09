@@ -140,10 +140,11 @@ async function generatePDFFromHTML(html) {
   await new Promise(resolve => setTimeout(resolve, 700))
 
   const body = iframe.contentDocument.body
-  const docEl = iframe.contentDocument.documentElement
+  // Measure the actual receipt/slip wrapper div, not body — body fills the
+  // 10000px iframe viewport and would cause blank pages if used directly.
+  const contentDiv = body.firstElementChild
   const contentHeight = Math.max(
-    body.scrollHeight, body.offsetHeight,
-    docEl.scrollHeight, docEl.offsetHeight,
+    contentDiv ? contentDiv.offsetHeight : 0,
     1123
   )
 
