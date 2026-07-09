@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package } from 'lucide-react'
+import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
+import { generateAllotmentSlipBlob, downloadAllotmentSlip } from '../../lib/receipt'
 
 function EditModal({ open, onClose, onSave, initial }) {
   const [form, setForm] = useState({ name: '', location: '', phone: '', notes: '' })
@@ -69,6 +70,7 @@ export default function InstitutionDetail() {
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
+  const [generatingSlip, setGeneratingSlip] = useState(null)
 
   // Issue panel state
   const [examFilter, setExamFilter] = useState('all')
@@ -83,7 +85,7 @@ export default function InstitutionDetail() {
     setLoading(true)
     const [{ data: inst }, { data: alts }, { data: bks, error: bksErr }, { data: stk }] = await Promise.all([
       supabase.from('institutions').select('*').eq('id', id).single(),
-      supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium)').eq('institution_id', id).order('allotted_at', { ascending: false }),
+      supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium), users(name)').eq('institution_id', id).order('allotted_at', { ascending: false }),
       supabase.from('books').select('*').eq('is_active', true).order('exam_level').order('unit').order('part'),
       supabase.from('stock').select('id, book_id, available_qty'),
     ])
@@ -109,6 +111,50 @@ export default function InstitutionDetail() {
   }
   const totalQty = allotments.reduce((s, a) => s + (a.qty || 0), 0)
   const uniqueTitles = Object.keys(bookTotals).length
+
+  const batches = useMemo(() => {
+    const groups = {}
+    for (const a of allotments) {
+      const batchKey = a.allotted_at.substring(0, 19)
+      if (!groups[batchKey]) {
+        groups[batchKey] = {
+          key: batchKey,
+          allotted_at: a.allotted_at,
+          allotted_by_name: a.users?.name,
+          books: [],
+          totalQty: 0,
+        }
+      }
+      groups[batchKey].books.push({
+        title: a.books?.title,
+        exam_level: a.books?.exam_level,
+        unit: a.books?.unit,
+        part: a.books?.part,
+        qty: a.qty || 1,
+      })
+      groups[batchKey].totalQty += a.qty || 0
+    }
+    return Object.values(groups).sort((a, b) => new Date(b.allotted_at) - new Date(a.allotted_at))
+  }, [allotments])
+
+  async function handleDownloadSlip(batch) {
+    setGeneratingSlip(batch.key)
+    try {
+      const blob = await generateAllotmentSlipBlob({
+        distributor_name: institution.name,
+        distributor_location: institution.location,
+        distributor_phone: institution.phone,
+        books: batch.books,
+        allotted_at: batch.allotted_at,
+        allotted_by_name: batch.allotted_by_name,
+      })
+      await downloadAllotmentSlip(blob, institution.name)
+    } catch {
+      toast.error('Failed to generate slip')
+    } finally {
+      setGeneratingSlip(null)
+    }
+  }
 
   async function handleEdit(form) {
     const { error } = await supabase.from('institutions').update({
@@ -256,29 +302,47 @@ export default function InstitutionDetail() {
         </div>
       )}
 
-      {/* Full history */}
+      {/* Batch history */}
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-[#2a2a45]">
-          <h2 className="text-white font-semibold text-sm">Allotment History ({allotments.length})</h2>
+          <h2 className="text-white font-semibold text-sm">Allotment History ({batches.length} batch{batches.length !== 1 ? 'es' : ''})</h2>
         </div>
-        {allotments.length === 0 ? (
+        {batches.length === 0 ? (
           <p className="text-[#6b7280] text-sm px-5 py-8 text-center">No books allotted yet</p>
         ) : (
           <div className="divide-y divide-[#2a2a45]">
-            {allotments.map(a => {
-              const lvl = [a.books?.exam_level, a.books?.unit, a.books?.part].filter(Boolean).join(' › ')
-              return (
-                <div key={a.id} className="px-5 py-3 flex items-center gap-3">
-                  <BookOpen size={14} className="text-[#bd0a0a] flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-medium truncate">{a.books?.title}</p>
-                    {lvl && <p className="text-[#9ca3af] text-xs">{lvl}</p>}
-                    <p className="text-[#6b7280] text-xs mt-0.5">{format(new Date(a.allotted_at), 'dd MMM yy, hh:mm a')}</p>
+            {batches.map(batch => (
+              <div key={batch.key} className="px-5 py-4">
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <p className="text-white text-sm font-semibold">{batch.books.length} title{batch.books.length !== 1 ? 's' : ''} · {batch.totalQty} copies</p>
+                    <p className="text-[#6b7280] text-xs mt-0.5">
+                      {format(new Date(batch.allotted_at), 'dd MMM yy, hh:mm a')}
+                      {batch.allotted_by_name ? ` · by ${batch.allotted_by_name}` : ''}
+                    </p>
                   </div>
-                  <span className="text-white text-sm font-bold flex-shrink-0">×{a.qty}</span>
+                  <button
+                    onClick={() => handleDownloadSlip(batch)}
+                    disabled={generatingSlip === batch.key}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all disabled:opacity-50 flex-shrink-0 ml-3">
+                    <FileDown size={12} />
+                    {generatingSlip === batch.key ? 'Generating…' : 'Download Slip'}
+                  </button>
                 </div>
-              )
-            })}
+                <div className="space-y-1.5">
+                  {batch.books.map((b, i) => {
+                    const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
+                        <span className="text-[#9ca3af] text-xs flex-1 truncate">{lvl ? `${lvl} — ${b.title}` : b.title}</span>
+                        <span className="text-white text-xs font-semibold flex-shrink-0">×{b.qty}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

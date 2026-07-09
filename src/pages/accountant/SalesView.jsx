@@ -11,6 +11,9 @@ export default function SalesView() {
   const [expandedTxns, setExpandedTxns] = useState({})
   const [receiptData, setReceiptData] = useState(null)
 
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFilter, setDateFilter] = useState(today)
+
   useEffect(() => { fetchSales() }, [])
 
   async function fetchSales() {
@@ -34,6 +37,7 @@ export default function SalesView() {
           sold_by_name: s.users?.name,
           sold_at: s.sold_at,
           total_price: null,
+          payment_mode: s.payment_mode || 'cash',
           books: [],
           ids: [],
           all_returned: true,
@@ -49,8 +53,9 @@ export default function SalesView() {
   }, [sales])
 
   const filteredTxns = transactions.filter(t => {
+    if (t.sold_at.slice(0, 10) !== dateFilter) return false
     const q = search.toLowerCase()
-    return (
+    return !q || (
       t.buyer_name?.toLowerCase().includes(q) ||
       t.buyer_phone?.includes(search) ||
       t.sold_by_name?.toLowerCase().includes(q) ||
@@ -58,11 +63,42 @@ export default function SalesView() {
     )
   })
 
+  const dayTotalQty = filteredTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const dayTotalRevenue = filteredTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div>
         <h1 className="text-white text-2xl font-bold">Sales History</h1>
-        <p className="text-[#6b7280] text-sm mt-0.5">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</p>
+        <p className="text-[#6b7280] text-sm mt-0.5">{transactions.length} total transactions</p>
+      </div>
+
+      {/* Date filter */}
+      <div className="flex items-center gap-3">
+        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+          className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+        {dateFilter !== today && (
+          <button onClick={() => setDateFilter(today)}
+            className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+            Today
+          </button>
+        )}
+      </div>
+
+      {/* Day summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">Transactions</p>
+          <p className="text-white text-2xl font-bold mt-0.5">{filteredTxns.length}</p>
+        </div>
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">Books Sold</p>
+          <p className="text-white text-2xl font-bold mt-0.5">{dayTotalQty}</p>
+        </div>
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">Revenue</p>
+          <p className="text-[#f0a500] text-2xl font-bold mt-0.5">₹{dayTotalRevenue.toFixed(0)}</p>
+        </div>
       </div>
 
       <div className="relative">
@@ -75,7 +111,7 @@ export default function SalesView() {
         {loading ? [...Array(3)].map((_, i) => (
           <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 animate-pulse h-28" />
         )) : filteredTxns.length === 0 ? (
-          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales found</div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales for this date</div>
         ) : filteredTxns.map(txn => (
           <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${txn.all_returned ? 'opacity-60' : ''}`}>
             <div className="flex items-start justify-between mb-1">
@@ -84,7 +120,10 @@ export default function SalesView() {
                 {txn.buyer_phone && <p className="text-[#6b7280] text-xs">{txn.buyer_phone}</p>}
                 <p className="text-[#4b5563] text-xs mt-0.5">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+              <div className="flex items-center gap-2 flex-shrink-0 ml-3 flex-wrap justify-end">
+                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${txn.payment_mode === 'online' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-[#2a2a45] text-[#9ca3af] border-[#2a2a45]'}`}>
+                  {txn.payment_mode === 'online' ? 'Online' : 'Cash'}
+                </span>
                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
                   {txn.all_returned ? 'Returned' : 'Sold'}
                 </span>
@@ -123,7 +162,7 @@ export default function SalesView() {
 
             <div className="mt-3 pt-3 border-t border-[#2a2a45]">
               <button
-                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name })}
+                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name, payment_mode: txn.payment_mode })}
                 className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
                 <Receipt size={13} /> View Receipt
               </button>

@@ -31,6 +31,10 @@ export default function Sales() {
   const [saleUnitFilter, setSaleUnitFilter] = useState('all')
   const [saleBookSearch, setSaleBookSearch] = useState('')
   const [expandedTxns, setExpandedTxns] = useState({})
+  const [paymentMode, setPaymentMode] = useState('cash')
+
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFilter, setDateFilter] = useState(today)
 
   const total = parseFloat(finalPrice) || 0
 
@@ -67,7 +71,7 @@ export default function Sales() {
     for (const s of (stockData || [])) map[s.book_id] = (map[s.book_id] || 0) + (s.available_qty || 0)
     setStockMap(map)
     setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setSelectedBooks([]); setFinalPrice('')
-    setSaleExamFilter('all'); setSaleUnitFilter('all'); setSaleBookSearch('')
+    setSaleExamFilter('all'); setSaleUnitFilter('all'); setSaleBookSearch(''); setPaymentMode('cash')
     setRecordOpen(true)
   }
 
@@ -109,7 +113,8 @@ export default function Sales() {
       buyer_name: buyerName.trim(), buyer_phone: buyerPhone.trim() || null,
       book_id: b.id, qty: parseInt(b.qty) || 1,
       total_price: i === 0 ? (parseFloat(finalPrice) || null) : null,
-      sold_by: profile?.id, sold_at: now, is_returned: false
+      sold_by: profile?.id, sold_at: now, is_returned: false,
+      payment_mode: paymentMode,
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
     if (error) { toast.error('Failed to record sale'); setRecording(false); return }
@@ -156,6 +161,7 @@ export default function Sales() {
           sold_by_name: s.users?.name,
           sold_at: s.sold_at,
           total_price: null,
+          payment_mode: s.payment_mode || 'cash',
           books: [],
           ids: [],
           all_returned: true,
@@ -171,8 +177,10 @@ export default function Sales() {
   }, [sales])
 
   const filteredTxns = transactions.filter(t => {
+    const txnDate = t.sold_at.slice(0, 10)
+    if (txnDate !== dateFilter) return false
     const q = search.toLowerCase()
-    return (
+    return !q || (
       t.buyer_name?.toLowerCase().includes(q) ||
       t.buyer_phone?.includes(search) ||
       t.sold_by_name?.toLowerCase().includes(q) ||
@@ -180,18 +188,50 @@ export default function Sales() {
     )
   })
 
+  const dayTotalQty = filteredTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const dayTotalRevenue = filteredTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-white text-2xl font-bold">Sales</h1>
-          <p className="text-[#6b7280] text-sm mt-0.5">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</p>
+          <p className="text-[#6b7280] text-sm mt-0.5">{transactions.length} total transactions</p>
         </div>
         <button onClick={openRecordSale}
           className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
           <Plus size={15} /> Record Sale
         </button>
       </div>
+
+      {/* Date filter */}
+      <div className="flex items-center gap-3">
+        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
+          className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+        {dateFilter !== today && (
+          <button onClick={() => setDateFilter(today)}
+            className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+            Today
+          </button>
+        )}
+      </div>
+
+      {/* Day summary */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">Transactions</p>
+          <p className="text-white text-2xl font-bold mt-0.5">{filteredTxns.length}</p>
+        </div>
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">Books Sold</p>
+          <p className="text-white text-2xl font-bold mt-0.5">{dayTotalQty}</p>
+        </div>
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">Revenue</p>
+          <p className="text-[#f0a500] text-2xl font-bold mt-0.5">₹{dayTotalRevenue.toFixed(0)}</p>
+        </div>
+      </div>
+
       <div className="relative">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by buyer name, phone or book..."
@@ -213,7 +253,10 @@ export default function Sales() {
                 {txn.buyer_phone && <p className="text-[#6b7280] text-xs">{txn.buyer_phone}</p>}
                 <p className="text-[#4b5563] text-xs mt-0.5">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+              <div className="flex items-center gap-2 flex-shrink-0 ml-3 flex-wrap justify-end">
+                <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${txn.payment_mode === 'online' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-[#2a2a45] text-[#9ca3af] border-[#2a2a45]'}`}>
+                  {txn.payment_mode === 'online' ? 'Online' : 'Cash'}
+                </span>
                 <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
                   {txn.all_returned ? 'Returned' : 'Sold'}
                 </span>
@@ -286,6 +329,17 @@ export default function Sales() {
                   <label className="text-[#9ca3af] text-xs mb-1 block">Phone</label>
                   <input value={buyerPhone} onChange={e => setBuyerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="10 digit number"
                     className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+                </div>
+              </div>
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-2 block">Payment Mode *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[{ val: 'cash', label: 'Cash' }, { val: 'online', label: 'Online' }].map(({ val, label }) => (
+                    <button key={val} type="button" onClick={() => setPaymentMode(val)}
+                      className={`py-2 rounded-lg border text-sm font-medium transition-all ${paymentMode === val ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#bd0a0a]'}`}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div>
