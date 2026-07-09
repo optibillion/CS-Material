@@ -2,7 +2,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { useEffect } from 'react'
 import { useAuthStore } from './store/authStore'
-import { supabase } from './lib/supabase'
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -61,27 +60,16 @@ function ProtectedAccountant({ children }) {
 }
 
 function SessionGuard() {
-  const { user, logout, loginAt } = useAuthStore()
+  const { loginAt, logout } = useAuthStore()
 
   useEffect(() => {
+    // Only enforce the 30-day local timeout.
+    // Supabase autoRefreshToken handles JWT renewal silently — listening to
+    // onAuthStateChange caused spurious logouts because INITIAL_SESSION fires
+    // with null while the token refresh is still in flight.
     if (loginAt && Date.now() - loginAt > THIRTY_DAYS_MS) {
       logout()
-      return
     }
-
-    // Use onAuthStateChange instead of getSession() — INITIAL_SESSION fires
-    // after the client has fully restored the session from storage, so it
-    // won't incorrectly return null during initialization and cause a logout.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'INITIAL_SESSION' && !session && user) {
-        logout()
-      }
-      if (event === 'SIGNED_OUT' && user) {
-        logout()
-      }
-    })
-
-    return () => subscription.unsubscribe()
   }, [])
 
   return null
