@@ -234,10 +234,23 @@ async function setPermission(user, field, value) {
                 </td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{format(new Date(u.created_at), 'dd MMM yy')}</td>
                 <td className="px-5 py-3">
-                  {u.role === 'issuer' ? (
+                  {u.role === 'admin' ? (
+                    <span className="text-xs px-2 py-0.5 rounded border bg-[#bd0a0a]/20 border-[#bd0a0a]/30 text-red-400 font-medium">Full Access</span>
+                  ) : u.role === 'accountant' ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[#6b7280] text-xs w-20">Distributors</span>
+                        <span className="text-xs px-2 py-0.5 rounded border bg-[#bd0a0a]/20 border-[#bd0a0a]/40 text-red-400 font-medium">edit</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[#6b7280] text-xs w-20">Inventory</span>
+                        <span className="text-xs px-2 py-0.5 rounded border bg-[#bd0a0a]/20 border-[#bd0a0a]/40 text-red-400 font-medium">edit</span>
+                      </div>
+                    </div>
+                  ) : u.role === 'issuer' ? (
                     <div className="space-y-2">
                       <div>
-                        <p className="text-[#6b7280] text-xs mb-1">Allotments</p>
+                        <p className="text-[#6b7280] text-xs mb-1">Distributors</p>
                         <div className="flex gap-1">
                           {['view', 'edit'].map(level => (
                             <button key={level} onClick={() => setPermission(u, 'can_allot', level)}
