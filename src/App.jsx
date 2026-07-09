@@ -29,6 +29,7 @@ import AdminIssue from './pages/admin/Issue'
 import InstitutionDetail from './pages/admin/InstitutionDetail'
 
 // Accountant pages
+import AccountantDashboard from './pages/accountant/Dashboard'
 import AccountantSalesView from './pages/accountant/SalesView'
 
 // Issuer pages
@@ -48,7 +49,7 @@ function ProtectedAdmin({ children }) {
 function ProtectedIssuer({ children }) {
   const { user, isAccountant } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
-  if (isAccountant) return <Navigate to="/accountant/allotments" replace />
+  if (isAccountant) return <Navigate to="/accountant" replace />
   return children
 }
 
@@ -128,7 +129,7 @@ export default function App() {
 
         {/* Accountant routes */}
         <Route path="/accountant" element={<ProtectedAccountant><AccountantLayout /></ProtectedAccountant>}>
-          <Route index element={<Navigate to="/accountant/allotments" replace />} />
+          <Route index element={<AccountantDashboard />} />
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
