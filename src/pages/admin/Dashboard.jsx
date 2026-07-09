@@ -199,10 +199,15 @@ function RowItem({ type, row, index }) {
         <div className="flex items-center gap-3">
           {num}
           <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">{row.books?.title}</p>
-            <p className="text-[#6b7280] text-xs">{row.location || 'Main store'}</p>
+            {(row.books?.exam_level || row.books?.unit || row.books?.part) && (
+              <p className="text-white text-xs font-semibold truncate">{[row.books.exam_level, row.books.unit, row.books.part].filter(Boolean).join(' › ')}</p>
+            )}
+            <p className={`text-xs truncate ${(row.books?.exam_level || row.books?.unit || row.books?.part) ? 'text-[#9ca3af]' : 'text-white font-medium'}`}>{row.books?.title}</p>
+            {(row.books?.medium || row.books?.category) && (
+              <p className="text-[#6b7280] text-[10px] capitalize">{[row.books.medium, row.books.category].filter(Boolean).join(' · ')}</p>
+            )}
           </div>
-          <span className="text-red-400 text-sm font-bold flex-shrink-0">{row.available_qty} left</span>
+          <span className={`text-sm font-bold flex-shrink-0 ${row.available_qty === 0 ? 'text-red-400' : 'text-orange-400'}`}>{row.available_qty} left</span>
         </div>
         <div className="mt-2 ml-8 h-1.5 bg-[#2a2a45] rounded-full overflow-hidden">
           <div
@@ -263,7 +268,7 @@ async function fetchData(type) {
       return data || []
     }
     case 'lowStock': {
-      const { data } = await supabase.from('stock').select('*, books(title)')
+      const { data } = await supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)')
       return (data || []).filter(s => s.available_qty <= s.low_stock_threshold)
     }
     default: return []
@@ -315,7 +320,7 @@ export default function Dashboard() {
         .eq('is_reversed', false)
         .order('issued_at', { ascending: false })
         .limit(8),
-      supabase.from('stock').select('*, books(title)')
+      supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)')
     ])
 
     setStats({ totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued })
@@ -404,12 +409,20 @@ export default function Dashboard() {
             )) : lowStock.length === 0 ? (
               <p className="text-[#6b7280] text-sm px-5 py-6 text-center">All stock levels OK</p>
             ) : lowStock.map(s => (
-              <div key={s.id} className="px-5 py-3">
-                <p className="text-white text-sm font-medium">{s.books?.title}</p>
-                <div className="flex items-center justify-between mt-1">
-                  <span className="text-[#6b7280] text-xs">{s.location}</span>
-                  <span className="text-red-400 text-xs font-semibold">{s.available_qty} left</span>
+              <div key={s.id} className="px-5 py-3 flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  {(s.books?.exam_level || s.books?.unit || s.books?.part) && (
+                    <p className="text-white text-xs font-semibold truncate">{[s.books.exam_level, s.books.unit, s.books.part].filter(Boolean).join(' › ')}</p>
+                  )}
+                  <p className={`text-xs truncate ${(s.books?.exam_level || s.books?.unit || s.books?.part) ? 'text-[#6b7280]' : 'text-white font-medium'}`}>{s.books?.title}</p>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    {s.books?.medium && <span className="text-[10px] text-[#9ca3af] capitalize">{s.books.medium}</span>}
+                    {s.books?.category && <span className="text-[10px] text-[#6b7280] capitalize">· {s.books.category}</span>}
+                  </div>
                 </div>
+                <span className={`text-xs font-bold flex-shrink-0 ${s.available_qty === 0 ? 'text-red-400' : 'text-orange-400'}`}>
+                  {s.available_qty === 0 ? 'Out' : `${s.available_qty} left`}
+                </span>
               </div>
             ))}
           </div>

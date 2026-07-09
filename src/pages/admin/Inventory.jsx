@@ -299,7 +299,7 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
 
 function CorrectModal({ open, onClose, onSave, editing, allBooks }) {
   const [availableQty, setAvailableQty] = useState('')
-  const [threshold, setThreshold] = useState('10')
+  const [threshold, setThreshold] = useState('50')
 
   useEffect(() => {
     if (open && editing) {
@@ -340,7 +340,7 @@ function CorrectModal({ open, onClose, onSave, editing, allBooks }) {
         </div>
         <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45]">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={() => { onSave({ available_qty: parseInt(availableQty)||0, low_stock_threshold: parseInt(threshold)||10 }); onClose() }}
+          <button onClick={() => { onSave({ available_qty: parseInt(availableQty)||0, low_stock_threshold: parseInt(threshold)||50 }); onClose() }}
             className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Save Correction</button>
         </div>
       </div>
@@ -547,7 +547,7 @@ export default function Inventory() {
     } else {
       // First time — create entry then reconcile past records
       const { data: newStock, error } = await supabase.from('stock')
-        .insert({ book_id: bookId, location: 'Main Campus', total_qty: qty, available_qty: qty, low_stock_threshold: 10 })
+        .insert({ book_id: bookId, location: 'Main Campus', total_qty: qty, available_qty: qty, low_stock_threshold: 50 })
         .select('id').single()
       if (error) { toast.error('Failed to add stock'); return }
 

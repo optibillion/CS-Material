@@ -22,7 +22,7 @@ export default function AccountantDashboard() {
       supabase.from('sales').select('qty, total_price, payment_mode, is_returned').gte('sold_at', today).lt('sold_at', today + 'T23:59:59'),
       supabase.from('issuances').select('id').eq('is_previous_issuance', false).eq('is_reversed', false).gte('issued_at', today).lt('issued_at', today + 'T23:59:59'),
       supabase.from('allotments').select('qty, institution_name').gte('allotted_at', today).lt('allotted_at', today + 'T23:59:59'),
-      supabase.from('stock').select('available_qty, low_stock_threshold, books(title)').order('available_qty'),
+      supabase.from('stock').select('available_qty, low_stock_threshold, books(title, exam_level, unit, part, medium, category)').order('available_qty'),
     ])
     setSalesToday(sales || [])
     setIssuancesToday((issuances || []).length)
@@ -118,9 +118,17 @@ export default function AccountantDashboard() {
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl overflow-hidden">
             <div className="divide-y divide-[#2a2a45]">
               {lowStock.slice(0, 8).map((s, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-3">
-                  <p className="text-[#9ca3af] text-sm truncate flex-1">{s.books?.title}</p>
-                  <span className={`text-xs font-bold ml-3 flex-shrink-0 ${s.available_qty === 0 ? 'text-red-400' : 'text-orange-400'}`}>
+                <div key={i} className="flex items-center justify-between px-4 py-3 gap-3">
+                  <div className="flex-1 min-w-0">
+                    {(s.books?.exam_level || s.books?.unit || s.books?.part) && (
+                      <p className="text-white text-xs font-semibold truncate">{[s.books.exam_level, s.books.unit, s.books.part].filter(Boolean).join(' › ')}</p>
+                    )}
+                    <p className={`text-xs truncate ${(s.books?.exam_level || s.books?.unit || s.books?.part) ? 'text-[#6b7280]' : 'text-[#9ca3af]'}`}>{s.books?.title}</p>
+                    {(s.books?.medium || s.books?.category) && (
+                      <p className="text-[10px] text-[#4b5563] capitalize">{[s.books.medium, s.books.category].filter(Boolean).join(' · ')}</p>
+                    )}
+                  </div>
+                  <span className={`text-xs font-bold flex-shrink-0 ${s.available_qty === 0 ? 'text-red-400' : 'text-orange-400'}`}>
                     {s.available_qty === 0 ? 'Out' : `${s.available_qty} left`}
                   </span>
                 </div>
