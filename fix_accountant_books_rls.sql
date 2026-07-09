@@ -31,3 +31,8 @@ CREATE POLICY "allow_authenticated_insert_allotments"
 DROP POLICY IF EXISTS "allow_authenticated_update_stock" ON stock;
 CREATE POLICY "allow_authenticated_update_stock"
   ON stock FOR UPDATE TO authenticated USING (true);
+
+-- 7. READ sales (accountant can view sales history — read only, no insert/update)
+DROP POLICY IF EXISTS "allow_authenticated_read_sales" ON sales;
+CREATE POLICY "allow_authenticated_read_sales"
+  ON sales FOR SELECT TO authenticated USING (true);

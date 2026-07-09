@@ -29,6 +29,9 @@ import StudentDetail from './pages/admin/StudentDetail'
 import AdminIssue from './pages/admin/Issue'
 import InstitutionDetail from './pages/admin/InstitutionDetail'
 
+// Accountant pages
+import AccountantSalesView from './pages/accountant/SalesView'
+
 // Issuer pages
 import IssuerDashboard from './pages/issuer/Dashboard'
 import IssuerStudents from './pages/issuer/Students'
@@ -141,6 +144,7 @@ export default function App() {
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
+          <Route path="sales" element={<AccountantSalesView />} />
         </Route>
       </Routes>
     </BrowserRouter>

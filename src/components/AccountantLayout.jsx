@@ -1,12 +1,13 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
-import { Building2, Archive, LogOut, Menu, X } from 'lucide-react'
+import { Building2, Archive, ShoppingCart, LogOut, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
 const navItems = [
   { to: '/accountant/allotments', label: 'Distributors', icon: Building2 },
   { to: '/accountant/inventory', label: 'Inventory', icon: Archive },
+  { to: '/accountant/sales', label: 'Sales', icon: ShoppingCart },
 ]
 
 export default function AccountantLayout() {
