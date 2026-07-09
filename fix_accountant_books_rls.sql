@@ -36,3 +36,13 @@ CREATE POLICY "allow_authenticated_update_stock"
 DROP POLICY IF EXISTS "allow_authenticated_read_sales" ON sales;
 CREATE POLICY "allow_authenticated_read_sales"
   ON sales FOR SELECT TO authenticated USING (true);
+
+-- 8. READ issuances (so accountant sees full history in Inventory > History tab)
+DROP POLICY IF EXISTS "allow_authenticated_read_issuances" ON issuances;
+CREATE POLICY "allow_authenticated_read_issuances"
+  ON issuances FOR SELECT TO authenticated USING (true);
+
+-- 9. READ students (joined by issuances query to show student name in history)
+DROP POLICY IF EXISTS "allow_authenticated_read_students" ON students;
+CREATE POLICY "allow_authenticated_read_students"
+  ON students FOR SELECT TO authenticated USING (true);
