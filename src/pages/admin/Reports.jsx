@@ -95,7 +95,7 @@ export default function Reports() {
         'Book Title': b.title,
         'Issued to Students': b.issued,
         'Sold (Qty)': b.sold,
-        'Allotted to Institutions': b.allotted,
+        'Allotted to Distributors': b.allotted,
         'Total Out': b.issued + b.sold + b.allotted,
         'Sale Revenue (₹)': b.revenue,
       }))), 'Book Summary')
@@ -121,7 +121,7 @@ export default function Reports() {
       }))), 'Sales')
       // Sheet 5: Allotments
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filteredAllotments.map(a => ({
-        'Institution': a.institution_name,
+        'Distributor': a.institution_name,
         'Contact': a.contact_person,
         'Book': a.books?.title,
         'Qty': a.qty,
@@ -156,7 +156,7 @@ export default function Reports() {
           'Status': s.is_returned ? 'Returned' : 'Sold',
         }))
       : filteredAllotments.map(a => ({
-          'Institution': a.institution_name,
+          'Distributor': a.institution_name,
           'Contact': a.contact_person,
           'Book': a.books?.title,
           'Qty': a.qty,
@@ -340,7 +340,7 @@ export default function Reports() {
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl overflow-hidden overflow-x-auto">
             <div className="px-5 py-4 border-b border-[#2a2a45]">
               <p className="text-white font-semibold text-sm">Book-wise Breakdown</p>
-              <p className="text-[#6b7280] text-xs mt-0.5">Copies issued to students + sold externally + allotted to institutions</p>
+              <p className="text-[#6b7280] text-xs mt-0.5">Copies issued to students + sold externally + allotted to distributors</p>
             </div>
             <table className="w-full min-w-[600px]">
               <thead>

@@ -1,27 +1,33 @@
 -- Fix: Accountant RLS policies
--- Accountant purpose: send books to distributors (institutions) only.
+-- Accountant purpose: send books to distributors only.
 -- Run this in Supabase → SQL Editor.
 
--- 1. READ books (needed to see the book list in the Issue Books panel)
-CREATE POLICY IF NOT EXISTS "allow_authenticated_read_books"
+-- 1. READ books
+DROP POLICY IF EXISTS "allow_authenticated_read_books" ON books;
+CREATE POLICY "allow_authenticated_read_books"
   ON books FOR SELECT TO authenticated USING (true);
 
--- 2. READ stock (needed to show stock levels in the Issue Books panel)
-CREATE POLICY IF NOT EXISTS "allow_authenticated_read_stock"
+-- 2. READ stock
+DROP POLICY IF EXISTS "allow_authenticated_read_stock" ON stock;
+CREATE POLICY "allow_authenticated_read_stock"
   ON stock FOR SELECT TO authenticated USING (true);
 
--- 3. READ institutions/distributors (needed to load the distributor list and detail)
-CREATE POLICY IF NOT EXISTS "allow_authenticated_read_institutions"
+-- 3. READ institutions (distributors)
+DROP POLICY IF EXISTS "allow_authenticated_read_institutions" ON institutions;
+CREATE POLICY "allow_authenticated_read_institutions"
   ON institutions FOR SELECT TO authenticated USING (true);
 
--- 4. READ allotments (needed to show distributor history)
-CREATE POLICY IF NOT EXISTS "allow_authenticated_read_allotments"
+-- 4. READ allotments
+DROP POLICY IF EXISTS "allow_authenticated_read_allotments" ON allotments;
+CREATE POLICY "allow_authenticated_read_allotments"
   ON allotments FOR SELECT TO authenticated USING (true);
 
--- 5. INSERT allotments (needed so accountant can actually issue books to a distributor)
-CREATE POLICY IF NOT EXISTS "allow_authenticated_insert_allotments"
+-- 5. INSERT allotments (so accountant can issue books to a distributor)
+DROP POLICY IF EXISTS "allow_authenticated_insert_allotments" ON allotments;
+CREATE POLICY "allow_authenticated_insert_allotments"
   ON allotments FOR INSERT TO authenticated WITH CHECK (true);
 
--- 6. UPDATE stock (needed only if "Deduct from Stock" is checked during issue)
-CREATE POLICY IF NOT EXISTS "allow_authenticated_update_stock"
+-- 6. UPDATE stock (for "Deduct from Stock" during issue)
+DROP POLICY IF EXISTS "allow_authenticated_update_stock" ON stock;
+CREATE POLICY "allow_authenticated_update_stock"
   ON stock FOR UPDATE TO authenticated USING (true);
