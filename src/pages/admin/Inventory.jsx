@@ -471,7 +471,7 @@ export default function Inventory() {
   async function fetchAll() {
     setLoading(true)
     const [{ data: s }, { data: b }] = await Promise.all([
-      supabase.from('stock').select('*, books(title, category)').order('id', { ascending: false }),
+      supabase.from('stock').select('*, books(title, category, exam_level, unit, part, medium)').order('id', { ascending: false }),
       supabase.from('books').select('*').eq('is_active', true)
     ])
     setStock(s || [])
@@ -593,9 +593,12 @@ export default function Inventory() {
     fetchAll()
   }
 
-  const filtered = stock.filter(s =>
-    s.books?.title?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = stock.filter(s => {
+    const q = search.toLowerCase()
+    if (!q) return true
+    const b = s.books
+    return [b?.title, b?.exam_level, b?.unit, b?.part, b?.medium, b?.category].some(f => f?.toLowerCase().includes(q))
+  })
 
   const q = histSearch.toLowerCase()
   const filteredMov = movements.filter(m =>
@@ -662,8 +665,14 @@ export default function Inventory() {
                     <tr key={s.id} className="hover:bg-[#12121f] transition-colors cursor-pointer"
                       onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title })}>
                       <td className="px-5 py-3">
-                        <p className="text-white text-sm font-medium">{s.books?.title}</p>
-                        <p className="text-[#6b7280] text-xs">tap to view history</p>
+                        {(s.books?.exam_level || s.books?.unit || s.books?.part) ? (
+                          <p className="text-white text-sm font-semibold leading-snug">{[s.books.exam_level, s.books.unit, s.books.part].filter(Boolean).join(' › ')}</p>
+                        ) : null}
+                        <p className={`${(s.books?.exam_level || s.books?.unit || s.books?.part) ? 'text-[#9ca3af]' : 'text-white font-medium'} text-sm`}>{s.books?.title}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {s.books?.medium && <span className={`text-xs px-1.5 py-0.5 rounded border ${MEDIUM_COLORS[s.books.medium] || ''}`}>{MEDIUM_LABELS[s.books.medium]}</span>}
+                          {s.books?.category && <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${CAT_COLORS[s.books.category] || 'border-[#2a2a45] text-[#6b7280]'}`}>{s.books.category}</span>}
+                        </div>
                       </td>
                       <td className="px-5 py-3">
                         <span className={`text-sm font-semibold ${s.available_qty===0 ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-white'}`}>{s.available_qty}</span>
@@ -719,12 +728,19 @@ export default function Inventory() {
                 <div key={s.id} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="text-white font-semibold text-sm">{s.books?.title}</p>
-                      {isLow ? (
-                        <span className="text-xs text-red-400 flex items-center gap-1 mt-0.5"><AlertTriangle size={11}/> {s.available_qty===0 ? 'Out of stock' : 'Low stock'}</span>
-                      ) : (
-                        <span className="text-xs text-emerald-400 mt-0.5 block">OK</span>
+                      {(s.books?.exam_level || s.books?.unit || s.books?.part) && (
+                        <p className="text-white font-semibold text-sm leading-snug">{[s.books.exam_level, s.books.unit, s.books.part].filter(Boolean).join(' › ')}</p>
                       )}
+                      <p className={`${(s.books?.exam_level || s.books?.unit || s.books?.part) ? 'text-[#9ca3af]' : 'text-white font-semibold'} text-sm`}>{s.books?.title}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        {s.books?.medium && <span className={`text-xs px-1.5 py-0.5 rounded border ${MEDIUM_COLORS[s.books.medium] || ''}`}>{MEDIUM_LABELS[s.books.medium]}</span>}
+                        {s.books?.category && <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${CAT_COLORS[s.books.category] || 'border-[#2a2a45] text-[#6b7280]'}`}>{s.books.category}</span>}
+                        {isLow ? (
+                          <span className="text-xs text-red-400 flex items-center gap-1"><AlertTriangle size={11}/> {s.available_qty===0 ? 'Out of stock' : 'Low stock'}</span>
+                        ) : (
+                          <span className="text-xs text-emerald-400">OK</span>
+                        )}
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className={`text-xl font-bold ${s.available_qty===0 ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-white'}`}>{s.available_qty}</p>
