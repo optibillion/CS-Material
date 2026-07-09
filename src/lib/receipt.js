@@ -142,35 +142,64 @@ export async function generateReceiptBlob(data) {
   const html = buildReceiptHTML(data)
 
   const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:1123px;border:none;visibility:hidden'
+  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:auto;border:none;visibility:hidden'
   document.body.appendChild(iframe)
 
   iframe.contentDocument.open()
   iframe.contentDocument.write(html)
   iframe.contentDocument.close()
 
-  await new Promise(resolve => setTimeout(resolve, 500))
+  await new Promise(resolve => setTimeout(resolve, 600))
+
+  // Measure actual rendered height so long receipts aren't cut off
+  const contentHeight = Math.max(
+    iframe.contentDocument.documentElement.scrollHeight,
+    iframe.contentDocument.body.scrollHeight,
+    1123
+  )
+  iframe.style.height = contentHeight + 'px'
 
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import('html2canvas'),
     import('jspdf'),
   ])
 
+  const SCALE = 2
+  const A4_W_PX = 794
+  const A4_H_PX = 1123
+
   const canvas = await html2canvas(iframe.contentDocument.body, {
-    scale: 2,
+    scale: SCALE,
     backgroundColor: '#ffffff',
     useCORS: true,
     logging: false,
-    windowWidth: 794,
-    windowHeight: 1123,
-    width: 794,
-    height: 1123,
+    windowWidth: A4_W_PX,
+    windowHeight: contentHeight,
+    width: A4_W_PX,
+    height: contentHeight,
   })
   document.body.removeChild(iframe)
 
-  const imgData = canvas.toDataURL('image/jpeg', 0.92)
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
-  pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297)
+  const totalPages = Math.ceil(contentHeight / A4_H_PX)
+
+  for (let page = 0; page < totalPages; page++) {
+    const srcY = page * A4_H_PX * SCALE
+    const srcH = Math.min(A4_H_PX * SCALE, canvas.height - srcY)
+
+    // Slice this page out of the full canvas
+    const slice = document.createElement('canvas')
+    slice.width = A4_W_PX * SCALE
+    slice.height = A4_H_PX * SCALE
+    const ctx = slice.getContext('2d')
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, slice.width, slice.height)
+    ctx.drawImage(canvas, 0, srcY, A4_W_PX * SCALE, srcH, 0, 0, A4_W_PX * SCALE, srcH)
+
+    if (page > 0) pdf.addPage()
+    pdf.addImage(slice.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, 210, 297)
+  }
+
   return pdf.output('blob')
 }
 

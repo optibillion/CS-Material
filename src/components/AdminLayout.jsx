@@ -14,7 +14,7 @@ const navItems = [
   { to: '/admin/batches', label: 'Batches', icon: GraduationCap },
   { to: '/admin/inventory', label: 'Inventory', icon: Archive },
   { to: '/admin/sales', label: 'Sales', icon: ShoppingCart },
-  { to: '/admin/allotments', label: 'Institutions', icon: Building2 },
+  { to: '/admin/allotments', label: 'Distributors', icon: Building2 },
   { to: '/admin/users', label: 'Users', icon: UserCog },
   { to: '/admin/reports', label: 'Reports', icon: FileText },
   { to: '/admin/audit', label: 'Audit Log', icon: ClipboardList },

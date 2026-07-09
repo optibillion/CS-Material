@@ -14,18 +14,18 @@ function InstitutionModal({ open, onClose, onSave, initial }) {
   }, [open, initial])
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
   async function handleSave() {
-    if (!form.name.trim()) { toast.error('Institution name is required'); return }
+    if (!form.name.trim()) { toast.error('Distributor name is required'); return }
     await onSave(form); onClose()
   }
   if (!open) return null
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
-        <h2 className="text-white font-semibold text-lg mb-5">{initial ? 'Edit Institution' : 'New Institution'}</h2>
+        <h2 className="text-white font-semibold text-lg mb-5">{initial ? 'Edit Distributor' : 'New Distributor'}</h2>
         <div className="space-y-4">
           <div>
-            <label className="text-[#9ca3af] text-sm mb-1.5 block">Institution Name *</label>
-            <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Sharma Book House"
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Distributor Name *</label>
+            <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="e.g. Sharma Book House, Gupta Distributors"
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -89,9 +89,9 @@ export default function Allotments() {
       notes: form.notes.trim() || null,
       created_by: profile?.id
     })
-    if (error) { toast.error('Failed to create institution'); return }
-    toast.success('Institution created')
-    logAction('INSTITUTION_CREATED', form.name.trim())
+    if (error) { toast.error('Failed to create distributor'); return }
+    toast.success('Distributor created')
+    logAction('DISTRIBUTOR_CREATED', form.name.trim())
     fetchAll()
   }
 
@@ -104,13 +104,13 @@ export default function Allotments() {
     <div className="p-4 md:p-6 space-y-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-white text-2xl font-bold">Institutions</h1>
+          <h1 className="text-white text-2xl font-bold">Distributors</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{institutions.length} distributor{institutions.length !== 1 ? 's' : ''}</p>
         </div>
         {allotmentAccess === 'edit' && (
           <button onClick={() => setModalOpen(true)}
             className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all flex-shrink-0">
-            <Plus size={16} /> New Institution
+            <Plus size={16} /> New Distributor
           </button>
         )}
       </div>
@@ -130,7 +130,7 @@ export default function Allotments() {
       ) : filtered.length === 0 ? (
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-12 text-center">
           <Building2 size={32} className="text-[#2a2a45] mx-auto mb-3" />
-          <p className="text-[#6b7280] text-sm">{search ? 'No institutions match your search' : 'No institutions yet — create one to get started'}</p>
+          <p className="text-[#6b7280] text-sm">{search ? 'No distributors match your search' : 'No distributors yet — create one to get started'}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

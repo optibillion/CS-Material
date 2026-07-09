@@ -17,10 +17,10 @@ function EditModal({ open, onClose, onSave, initial }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
-        <h2 className="text-white font-semibold text-lg mb-5">Edit Institution</h2>
+        <h2 className="text-white font-semibold text-lg mb-5">Edit Distributor</h2>
         <div className="space-y-4">
           <div>
-            <label className="text-[#9ca3af] text-sm mb-1.5 block">Institution Name *</label>
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Distributor Name *</label>
             <input value={form.name} onChange={e => set('name', e.target.value)}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
           </div>
@@ -44,7 +44,7 @@ function EditModal({ open, onClose, onSave, initial }) {
         </div>
         <div className="flex gap-3 mt-6">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={() => { if (!form.name.trim()) { toast.error('Name required'); return } onSave(form); onClose() }}
+          <button onClick={() => { if (!form.name.trim()) { toast.error('Distributor name required'); return } onSave(form); onClose() }}
             className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Save</button>
         </div>
       </div>
@@ -87,7 +87,7 @@ export default function InstitutionDetail() {
       supabase.from('books').select('*').eq('is_active', true).order('exam_level').order('unit').order('part'),
       supabase.from('stock').select('id, book_id, available_qty'),
     ])
-    if (!inst) { toast.error('Institution not found'); navigate(`${basePath}/allotments`); return }
+    if (!inst) { toast.error('Distributor not found'); navigate(`${basePath}/allotments`); return }
     setInstitution(inst)
     setAllotments(alts || [])
     setBooks(bks || [])
@@ -117,8 +117,8 @@ export default function InstitutionDetail() {
       notes: form.notes.trim() || null,
     }).eq('id', id)
     if (error) { toast.error('Failed to update'); return }
-    toast.success('Institution updated')
-    logAction('INSTITUTION_UPDATED', form.name.trim())
+    toast.success('Distributor updated')
+    logAction('DISTRIBUTOR_UPDATED', form.name.trim())
     fetchAll()
   }
 
@@ -187,7 +187,7 @@ export default function InstitutionDetail() {
       {/* Back */}
       <button onClick={() => navigate(`${basePath}/allotments`)}
         className="flex items-center gap-2 text-[#9ca3af] hover:text-white text-sm transition-colors">
-        <ArrowLeft size={15} /> Back to Institutions
+        <ArrowLeft size={15} /> Back to Distributors
       </button>
 
       {/* Header */}

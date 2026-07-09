@@ -15,7 +15,7 @@ export default function IssuerLayout() {
   const { profile, logout, allotmentAccess, stockAccess } = useAuthStore()
   const navItems = [
     ...baseNavItems,
-    ...(allotmentAccess ? [{ to: '/issuer/allotments', label: 'Institutions', icon: Building2 }] : []),
+    ...(allotmentAccess ? [{ to: '/issuer/allotments', label: 'Distributors', icon: Building2 }] : []),
     ...(stockAccess ? [{ to: '/issuer/inventory', label: 'Inventory', icon: Archive }] : []),
   ]
   const navigate = useNavigate()

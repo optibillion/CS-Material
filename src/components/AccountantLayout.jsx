@@ -5,7 +5,7 @@ import { Building2, Archive, LogOut, Menu, X } from 'lucide-react'
 import { useState } from 'react'
 
 const navItems = [
-  { to: '/accountant/allotments', label: 'Institutions', icon: Building2 },
+  { to: '/accountant/allotments', label: 'Distributors', icon: Building2 },
   { to: '/accountant/inventory', label: 'Inventory', icon: Archive },
 ]
 
