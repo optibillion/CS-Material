@@ -121,22 +121,31 @@ function buildAllotmentSlipHTML(data) {
 }
 
 async function generatePDFFromHTML(html) {
+  // Wrap in a hidden 0×0 clip so the iframe doesn't flash on screen,
+  // but give the iframe a large explicit height so the browser fully
+  // lays out and renders all content before we measure.
+  const wrapper = document.createElement('div')
+  wrapper.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none'
+  document.body.appendChild(wrapper)
+
   const iframe = document.createElement('iframe')
-  iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:794px;height:auto;border:none;visibility:hidden'
-  document.body.appendChild(iframe)
+  iframe.style.cssText = 'width:794px;height:10000px;border:none'
+  wrapper.appendChild(iframe)
 
   iframe.contentDocument.open()
   iframe.contentDocument.write(html)
   iframe.contentDocument.close()
 
-  await new Promise(resolve => setTimeout(resolve, 600))
+  // Wait for fonts and layout to settle
+  await new Promise(resolve => setTimeout(resolve, 700))
 
+  const body = iframe.contentDocument.body
+  const docEl = iframe.contentDocument.documentElement
   const contentHeight = Math.max(
-    iframe.contentDocument.documentElement.scrollHeight,
-    iframe.contentDocument.body.scrollHeight,
+    body.scrollHeight, body.offsetHeight,
+    docEl.scrollHeight, docEl.offsetHeight,
     1123
   )
-  iframe.style.height = contentHeight + 'px'
 
   const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
     import('html2canvas'),
@@ -147,17 +156,19 @@ async function generatePDFFromHTML(html) {
   const A4_W_PX = 794
   const A4_H_PX = 1123
 
-  const canvas = await html2canvas(iframe.contentDocument.body, {
+  const canvas = await html2canvas(body, {
     scale: SCALE,
     backgroundColor: '#ffffff',
     useCORS: true,
     logging: false,
+    scrollX: 0,
+    scrollY: 0,
     windowWidth: A4_W_PX,
     windowHeight: contentHeight,
     width: A4_W_PX,
     height: contentHeight,
   })
-  document.body.removeChild(iframe)
+  document.body.removeChild(wrapper)
 
   const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const totalPages = Math.ceil(contentHeight / A4_H_PX)
