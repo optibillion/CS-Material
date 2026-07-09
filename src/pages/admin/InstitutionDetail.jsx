@@ -178,7 +178,7 @@ export default function InstitutionDetail() {
   )
   const selectedBooks = books.filter(b => parseInt(qtyMap[b.id] || 0) > 0)
 
-  function openIssue() { setQtyMap({}); setDeductStock(false); setExamFilter('all'); setUnitFilter('all'); setIssueOpen(true) }
+  function openIssue() { setQtyMap({}); setDeductStock(true); setExamFilter('all'); setUnitFilter('all'); setIssueOpen(true) }
 
   async function handleIssue() {
     if (selectedBooks.length === 0) { toast.error('Select at least one book with quantity'); return }
@@ -449,8 +449,8 @@ export default function InstitutionDetail() {
               <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border cursor-pointer transition-all ${deductStock ? 'bg-orange-500/10 border-orange-500/30' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
                 <input type="checkbox" checked={deductStock} onChange={e => setDeductStock(e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
                 <div>
-                  <p className="text-white text-sm font-medium">Deduct from Stock</p>
-                  <p className="text-[#6b7280] text-xs">Will reduce available inventory for selected books</p>
+                  <p className="text-white text-sm font-medium">{deductStock ? 'Deducting from Stock' : 'Not Deducting from Stock'}</p>
+                  <p className="text-[#6b7280] text-xs">{deductStock ? 'Uncheck to skip stock deduction' : 'Check to reduce available inventory'}</p>
                 </div>
               </label>
 

@@ -385,11 +385,34 @@ export default function Inventory() {
       toast.success('Stock updated')
       logAction('STOCK_UPDATED', `${editing.books?.title || editing.book_id} — qty ${payload.available_qty}/${payload.total_qty} @ ${payload.location}`)
     } else {
-      const { error } = await supabase.from('stock').insert({ ...payload, book_id: form.book_id })
+      const { data: newStock, error } = await supabase
+        .from('stock').insert({ ...payload, book_id: form.book_id }).select('id').single()
       if (error) { toast.error('Failed to add stock'); return }
-      toast.success('Stock added')
+
+      // Auto-reconcile: deduct all past sales, regular issuances, and distributor allotments
+      const [{ data: salesData }, { data: issuancesData }, { data: allotmentsData }] = await Promise.all([
+        supabase.from('sales').select('qty').eq('book_id', form.book_id).eq('is_returned', false),
+        supabase.from('issuances').select('id').eq('book_id', form.book_id).eq('is_previous_issuance', false).eq('is_reversed', false),
+        supabase.from('allotments').select('qty').eq('book_id', form.book_id),
+      ])
+      const soldQty      = (salesData || []).reduce((s, r) => s + (r.qty || 1), 0)
+      const issuedQty    = (issuancesData || []).length
+      const allottedQty  = (allotmentsData || []).reduce((s, r) => s + (r.qty || 1), 0)
+      const totalDeduct  = soldQty + issuedQty + allottedQty
+      const finalAvail   = Math.max(0, payload.available_qty - totalDeduct)
+
+      if (totalDeduct > 0 && newStock) {
+        await supabase.from('stock').update({ available_qty: finalAvail }).eq('id', newStock.id)
+      }
+
       const bookTitle = books.find(b => b.id === form.book_id)?.title || form.book_id
-      logAction('STOCK_CREATED', `${bookTitle} — qty ${payload.available_qty}/${payload.total_qty} @ ${payload.location}`)
+      if (totalDeduct > 0) {
+        toast.success(`Stock added — deducted ${totalDeduct} past records (${soldQty} sold · ${issuedQty} issued · ${allottedQty} distributor) → ${finalAvail} available`, { duration: 5000 })
+        logAction('STOCK_CREATED', `${bookTitle} — ${payload.total_qty} total, ${finalAvail} available after reconciling ${totalDeduct} past transactions`)
+      } else {
+        toast.success('Stock added')
+        logAction('STOCK_CREATED', `${bookTitle} — qty ${payload.available_qty}/${payload.total_qty} @ ${payload.location}`)
+      }
     }
     fetchAll()
   }
