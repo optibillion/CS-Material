@@ -12,37 +12,86 @@ const MEDIUM_COLORS = { hindi: 'bg-orange-500/20 text-orange-400 border-orange-5
 const CAT_COLORS = { booklet: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30', book: 'bg-sky-500/20 text-sky-400 border-sky-500/30', notes: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' }
 
 function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
-  const [bookId, setBookId] = useState('')
-  const [qty, setQty] = useState('')
-  const [note, setNote] = useState('')
+  const [cart, setCart] = useState([]) // [{ bookId, qty, note }]
   const [bookSearch, setBookSearch] = useState('')
   const [filterMedium, setFilterMedium] = useState('')
   const [filterCat, setFilterCat] = useState('')
   const [filterExam, setFilterExam] = useState('')
+  const [filterUnit, setFilterUnit] = useState('')
+  const [filterPart, setFilterPart] = useState('')
+  const [step, setStep] = useState('select')
+  const [confirmData, setConfirmData] = useState([])
+  const [loadingConfirm, setLoadingConfirm] = useState(false)
 
   useEffect(() => {
     if (open) {
-      setBookId(preBook?.id || '')
-      setQty(''); setNote(''); setBookSearch('')
-      setFilterMedium(''); setFilterCat(''); setFilterExam('')
+      setCart(preBook ? [{ bookId: preBook.id, qty: 1, note: '' }] : [])
+      setBookSearch(''); setStep('select'); setConfirmData([])
+      setFilterMedium(''); setFilterCat(''); setFilterExam(''); setFilterUnit(''); setFilterPart('')
     }
   }, [open, preBook])
 
   const examOptions = [...new Set(allBooks.map(b => b.exam_level).filter(Boolean))].sort()
+  const unitOptions = [...new Set(allBooks.filter(b => !filterExam || b.exam_level === filterExam).map(b => b.unit).filter(Boolean))].sort()
+  const partOptions = [...new Set(allBooks.filter(b => (!filterExam || b.exam_level === filterExam) && (!filterUnit || b.unit === filterUnit)).map(b => b.part).filter(Boolean))].sort()
+
   const visibleBooks = allBooks.filter(b => {
     const q = bookSearch.toLowerCase()
     const matchQ = !q || [b.title, b.exam_level, b.unit, b.part, b.subject].some(f => f?.toLowerCase().includes(q))
-    return matchQ && (!filterMedium || b.medium === filterMedium) && (!filterCat || b.category === filterCat) && (!filterExam || b.exam_level === filterExam)
+    return matchQ
+      && (!filterMedium || b.medium === filterMedium)
+      && (!filterCat || b.category === filterCat)
+      && (!filterExam || b.exam_level === filterExam)
+      && (!filterUnit || b.unit === filterUnit)
+      && (!filterPart || b.part === filterPart)
   })
 
-  const existingEntry = bookId ? stock.find(s => s.book_id === bookId) : null
-  const isFirstTime = bookId && !existingEntry
-  const parsedQty = parseInt(qty) || 0
+  function toggleCart(bookId) {
+    setCart(c => c.find(i => i.bookId === bookId) ? c.filter(i => i.bookId !== bookId) : [...c, { bookId, qty: 1, note: '' }])
+  }
+  function updateCartQty(bookId, val) {
+    setCart(c => c.map(i => i.bookId === bookId ? { ...i, qty: parseInt(val)||1 } : i))
+  }
+  function removeFromCart(bookId) {
+    setCart(c => c.filter(i => i.bookId !== bookId))
+  }
 
-  async function handleSave() {
-    if (!bookId) { toast.error('Select a book'); return }
-    if (!parsedQty || parsedQty < 1) { toast.error('Enter a valid quantity'); return }
-    await onSave({ bookId, qty: parsedQty, note: note.trim() || null, existingEntry })
+  async function handleReview() {
+    const valid = cart.filter(i => i.qty >= 1)
+    if (!valid.length) { toast.error('Add at least one book with quantity'); return }
+    setLoadingConfirm(true)
+    try {
+      const results = await Promise.all(valid.map(async item => {
+        const book = allBooks.find(b => b.id === item.bookId)
+        const existingEntry = stock.find(s => s.book_id === item.bookId)
+        const { data: prevData } = await supabase.from('issuances').select('id').eq('book_id', item.bookId).eq('is_previous_issuance', true)
+        const prevSafe = (prevData||[]).length
+        if (existingEntry) {
+          return { book, qty: item.qty, note: item.note, existingEntry, deductInfo: null, prevSafe }
+        }
+        const [{ data: salesData }, { data: issuancesData }, { data: allotmentsData }] = await Promise.all([
+          supabase.from('sales').select('qty').eq('book_id', item.bookId).eq('is_returned', false),
+          supabase.from('issuances').select('id').eq('book_id', item.bookId).eq('is_previous_issuance', false).eq('is_reversed', false),
+          supabase.from('allotments').select('qty').eq('book_id', item.bookId),
+        ])
+        const soldQty     = (salesData||[]).reduce((s, r) => s + (r.qty||1), 0)
+        const issuedQty   = (issuancesData||[]).length
+        const allottedQty = (allotmentsData||[]).reduce((s, r) => s + (r.qty||1), 0)
+        const totalDeduct = soldQty + issuedQty + allottedQty
+        const finalAvail  = Math.max(0, item.qty - totalDeduct)
+        return { book, qty: item.qty, note: item.note, existingEntry, deductInfo: { soldQty, issuedQty, allottedQty, totalDeduct, finalAvail }, prevSafe }
+      }))
+      setConfirmData(results)
+      setStep('confirm')
+    } finally {
+      setLoadingConfirm(false)
+    }
+  }
+
+  async function handleConfirmAll() {
+    for (const item of confirmData) {
+      await onSave({ bookId: item.book.id, qty: item.qty, note: item.note || null, existingEntry: item.existingEntry })
+    }
     onClose()
   }
 
@@ -50,110 +99,199 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-0 sm:px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[92vh] flex flex-col">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a45] flex-shrink-0">
           <div>
-            <h2 className="text-white font-semibold text-base">Add Stock</h2>
-            <p className="text-[#6b7280] text-xs mt-0.5">Record a new batch received</p>
+            <h2 className="text-white font-semibold text-base">{step === 'confirm' ? 'Confirm Stock Entry' : 'Add Stock'}</h2>
+            <p className="text-[#6b7280] text-xs mt-0.5">
+              {step === 'confirm'
+                ? `${confirmData.length} book${confirmData.length !== 1 ? 's' : ''} ready to save`
+                : 'Select books and set quantities'}
+            </p>
           </div>
           <button onClick={onClose} className="text-[#6b7280] hover:text-white"><X size={18} /></button>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
-          {preBook ? (
-            <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg px-4 py-3">
-              <p className="text-[#6b7280] text-xs mb-0.5">Book</p>
-              <p className="text-white text-sm font-medium">{preBook.title}</p>
-            </div>
-          ) : (
-            <div>
-              <label className="text-[#9ca3af] text-xs uppercase tracking-wide mb-2 block">Select Book *</label>
-              {allBooks.length === 0 ? (
-                <p className="text-[#6b7280] text-sm text-center py-6">No books found — add books first</p>
-              ) : (
-                <>
-                  <div className="relative mb-2">
-                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
-                    <input value={bookSearch} onChange={e => setBookSearch(e.target.value)}
-                      placeholder="Search title, exam, unit..."
-                      className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
-                  </div>
-                  <div className="flex gap-1.5 flex-wrap mb-2">
-                    {['hindi','english','both'].map(m => (
-                      <button key={m} type="button" onClick={() => setFilterMedium(f => f===m ? '' : m)}
-                        className={`text-xs px-2 py-0.5 rounded-full border transition-all ${filterMedium===m ? MEDIUM_COLORS[m] : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
-                        {MEDIUM_LABELS[m]}
-                      </button>
-                    ))}
-                    {['booklet','book','notes'].map(c => (
-                      <button key={c} type="button" onClick={() => setFilterCat(f => f===c ? '' : c)}
-                        className={`text-xs px-2 py-0.5 rounded-full border capitalize transition-all ${filterCat===c ? CAT_COLORS[c] : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
-                        {c}
-                      </button>
-                    ))}
-                    {examOptions.map(e => (
-                      <button key={e} type="button" onClick={() => setFilterExam(f => f===e ? '' : e)}
-                        className={`text-xs px-2 py-0.5 rounded-full border transition-all ${filterExam===e ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
-                        {e}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                    {visibleBooks.length === 0 ? (
-                      <p className="text-[#6b7280] text-xs text-center py-4">No books match</p>
-                    ) : visibleBooks.map(b => (
-                      <button key={b.id} type="button" onClick={() => setBookId(b.id)}
-                        className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${bookId===b.id ? 'border-[#bd0a0a] bg-[#bd0a0a]/10' : 'border-[#2a2a45] bg-[#12121f] hover:border-[#3a3a55]'}`}>
-                        <p className="text-white text-sm font-medium leading-snug">{b.title}</p>
-                        <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                          {b.exam_level && <span className="text-[#9ca3af] text-xs">{b.exam_level}</span>}
-                          {b.unit && <span className="text-[#6b7280] text-xs">· {b.unit}</span>}
-                          {b.medium && <span className={`text-xs px-1.5 py-0.5 rounded border ${MEDIUM_COLORS[b.medium]||''}`}>{MEDIUM_LABELS[b.medium]}</span>}
+        {step === 'select' ? (<>
+          {/* Filters + Book List */}
+          <div className="flex-1 overflow-y-auto px-5 py-3 space-y-2.5 min-h-0">
+            {!preBook && (<>
+              <div className="relative">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+                <input value={bookSearch} onChange={e => setBookSearch(e.target.value)}
+                  placeholder="Search title, exam, unit, part…"
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {['hindi','english','both'].map(m => (
+                  <button key={m} type="button" onClick={() => setFilterMedium(f => f===m ? '' : m)}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${filterMedium===m ? MEDIUM_COLORS[m] : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {MEDIUM_LABELS[m]}
+                  </button>
+                ))}
+                {['booklet','book','notes'].map(c => (
+                  <button key={c} type="button" onClick={() => setFilterCat(f => f===c ? '' : c)}
+                    className={`text-xs px-2 py-0.5 rounded-full border capitalize transition-all ${filterCat===c ? CAT_COLORS[c] : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {c}
+                  </button>
+                ))}
+                {examOptions.map(e => (
+                  <button key={e} type="button" onClick={() => { setFilterExam(f => f===e ? '' : e); setFilterUnit(''); setFilterPart('') }}
+                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${filterExam===e ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+              {(unitOptions.length > 0 || partOptions.length > 0) && (
+                <div className="flex gap-2">
+                  {unitOptions.length > 0 && (
+                    <select value={filterUnit} onChange={e => { setFilterUnit(e.target.value); setFilterPart('') }}
+                      className="flex-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-[#bd0a0a]">
+                      <option value="">All Papers</option>
+                      {unitOptions.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  )}
+                  {partOptions.length > 0 && (
+                    <select value={filterPart} onChange={e => setFilterPart(e.target.value)}
+                      className="flex-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-sm text-white focus:outline-none focus:border-[#bd0a0a]">
+                      <option value="">All Parts</option>
+                      {partOptions.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  )}
+                </div>
+              )}
+              <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                {visibleBooks.length === 0
+                  ? <p className="text-[#6b7280] text-xs text-center py-4">No books match</p>
+                  : visibleBooks.map(b => {
+                    const inCart = cart.find(i => i.bookId === b.id)
+                    return (
+                      <button key={b.id} type="button" onClick={() => toggleCart(b.id)}
+                        className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${inCart ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-[#2a2a45] bg-[#12121f] hover:border-[#3a3a55]'}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white text-sm font-medium leading-snug truncate">{b.title}</p>
+                            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                              {b.exam_level && <span className="text-[#9ca3af] text-xs">{b.exam_level}</span>}
+                              {b.unit && <span className="text-[#6b7280] text-xs">· {b.unit}</span>}
+                              {b.part && <span className="text-[#6b7280] text-xs">· {b.part}</span>}
+                              {b.medium && <span className={`text-xs px-1 py-0.5 rounded border ${MEDIUM_COLORS[b.medium]||''}`}>{MEDIUM_LABELS[b.medium]}</span>}
+                            </div>
+                          </div>
+                          {inCart && <span className="text-emerald-400 text-xs font-semibold flex-shrink-0">✓</span>}
                         </div>
                       </button>
-                    ))}
+                    )
+                  })
+                }
+              </div>
+            </>)}
+          </div>
+
+          {/* Cart */}
+          {cart.length > 0 && (
+            <div className="border-t border-[#2a2a45] px-5 py-3 space-y-2 max-h-52 overflow-y-auto flex-shrink-0">
+              <p className="text-[#9ca3af] text-xs uppercase tracking-wide font-semibold">{cart.length} book{cart.length !== 1 ? 's' : ''} selected</p>
+              {cart.map(item => {
+                const book = allBooks.find(b => b.id === item.bookId)
+                if (!book) return null
+                return (
+                  <div key={item.bookId} className="bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white text-sm font-medium truncate">{book.title}</p>
+                      {(book.unit || book.part) && (
+                        <p className="text-[#6b7280] text-xs truncate">{[book.unit, book.part].filter(Boolean).join(' · ')}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <input type="number" min="1" value={item.qty}
+                        onChange={e => updateCartQty(item.bookId, e.target.value)}
+                        className="w-16 bg-[#1a1a2e] border border-[#2a2a45] rounded px-2 py-1 text-white text-sm text-center focus:outline-none focus:border-[#bd0a0a]" />
+                      <button onClick={() => removeFromCart(item.bookId)} className="text-[#6b7280] hover:text-red-400 transition-colors">
+                        <X size={14} />
+                      </button>
+                    </div>
                   </div>
-                </>
-              )}
+                )
+              })}
             </div>
           )}
 
-          {existingEntry && (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-4 py-3">
-              <p className="text-emerald-400 text-xs font-semibold">Adding to existing stock</p>
-              <p className="text-white text-sm mt-0.5">{existingEntry.available_qty} available · {existingEntry.total_qty} total received so far</p>
-              {parsedQty > 0 && (
-                <p className="text-[#9ca3af] text-xs mt-1">
-                  After adding: <span className="text-white font-medium">{existingEntry.available_qty + parsedQty} available</span> · {existingEntry.total_qty + parsedQty} total
-                </p>
-              )}
-            </div>
-          )}
-          {isFirstTime && (
-            <div className="bg-[#f0a500]/10 border border-[#f0a500]/20 rounded-lg px-4 py-3">
-              <p className="text-[#f0a500] text-xs font-semibold">First time for this book</p>
-              <p className="text-[#9ca3af] text-xs mt-0.5">All past sales, issuances and distributor records will be auto-deducted from available count</p>
-            </div>
-          )}
+          <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45] flex-shrink-0">
+            <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
+            <button onClick={handleReview} disabled={cart.length === 0 || loadingConfirm}
+              className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all disabled:opacity-50">
+              {loadingConfirm ? 'Checking…' : `Review${cart.length > 0 ? ` (${cart.length})` : ''}`}
+            </button>
+          </div>
+        </>) : (<>
+          {/* Confirm Screen */}
+          <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+            {confirmData.map(item => (
+              <div key={item.book.id} className="bg-[#12121f] border border-[#2a2a45] rounded-xl p-4 space-y-3">
+                <div>
+                  <p className="text-white font-semibold text-sm">{item.book.title}</p>
+                  <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                    {item.book.exam_level && <span className="text-[#9ca3af] text-xs">{item.book.exam_level}</span>}
+                    {item.book.unit && <span className="text-[#9ca3af] text-xs">· {item.book.unit}</span>}
+                    {item.book.part && <span className="text-[#9ca3af] text-xs">· {item.book.part}</span>}
+                  </div>
+                  <div className="flex gap-1.5 mt-1">
+                    {item.book.category && <span className={`text-xs px-1.5 py-0.5 rounded border capitalize ${CAT_COLORS[item.book.category]||'border-[#2a2a45] text-[#6b7280]'}`}>{item.book.category}</span>}
+                    {item.book.medium && <span className={`text-xs px-1.5 py-0.5 rounded border ${MEDIUM_COLORS[item.book.medium]||''}`}>{MEDIUM_LABELS[item.book.medium]}</span>}
+                  </div>
+                </div>
 
-          <div>
-            <label className="text-[#9ca3af] text-xs uppercase tracking-wide mb-2 block">Quantity Received *</label>
-            <input type="number" min="1" value={qty} onChange={e => setQty(e.target.value)}
-              placeholder="How many copies in this batch?"
-              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+                <div className="flex items-center justify-between">
+                  <span className="text-[#9ca3af] text-xs">Quantity adding</span>
+                  <span className="text-white font-bold text-lg">{item.qty} <span className="text-xs font-normal text-[#6b7280]">copies</span></span>
+                </div>
+
+                {item.prevSafe > 0 && (
+                  <div className="flex items-center justify-between bg-[#f0a500]/10 border border-[#f0a500]/20 rounded-lg px-3 py-1.5">
+                    <span className="text-[#f0a500] text-xs">Previous issuances — not deducted</span>
+                    <span className="text-[#f0a500] font-semibold">{item.prevSafe}</span>
+                  </div>
+                )}
+
+                {item.deductInfo ? (
+                  <div className="space-y-1.5">
+                    <p className="text-red-400 text-xs font-semibold uppercase tracking-wide">First entry — auto-deduction</p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[['Issued', item.deductInfo.issuedQty], ['Sold', item.deductInfo.soldQty], ['Allotted', item.deductInfo.allottedQty]].map(([label, val]) => (
+                        <div key={label} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg py-2 text-center">
+                          <p className="text-white font-semibold text-sm">{val}</p>
+                          <p className="text-[#6b7280] text-xs">{label}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex justify-between items-center border-t border-[#2a2a45] pt-1.5">
+                      <span className="text-[#9ca3af] text-xs">Total deducted</span>
+                      <span className="text-red-400 font-semibold">− {item.deductInfo.totalDeduct}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[#9ca3af] text-xs">Final available</span>
+                      <span className="text-emerald-400 font-bold text-base">{item.deductInfo.finalAvail}</span>
+                    </div>
+                  </div>
+                ) : item.existingEntry ? (
+                  <div className="flex justify-between items-center">
+                    <span className="text-[#9ca3af] text-xs">Available after adding</span>
+                    <span className="text-emerald-400 font-bold">{item.existingEntry.available_qty + item.qty}</span>
+                  </div>
+                ) : null}
+              </div>
+            ))}
           </div>
 
-          <div>
-            <label className="text-[#9ca3af] text-xs mb-1.5 block">Note <span className="text-[#4b5563]">(optional)</span></label>
-            <input value={note} onChange={e => setNote(e.target.value)}
-              placeholder="e.g. Batch 2, from publisher"
-              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+          <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45] flex-shrink-0">
+            <button onClick={() => setStep('select')} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Go Back</button>
+            <button onClick={handleConfirmAll} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">
+              Confirm All ({confirmData.length})
+            </button>
           </div>
-        </div>
-
-        <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45] flex-shrink-0">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={handleSave} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Add to Stock</button>
-        </div>
+        </>)}
       </div>
     </div>
   )
