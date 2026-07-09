@@ -81,13 +81,14 @@ export default function InstitutionDetail() {
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: inst }, { data: alts }, { data: bks }, { data: stk }] = await Promise.all([
+    const [{ data: inst }, { data: alts }, { data: bks, error: bksErr }, { data: stk }] = await Promise.all([
       supabase.from('institutions').select('*').eq('id', id).single(),
       supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium)').eq('institution_id', id).order('allotted_at', { ascending: false }),
       supabase.from('books').select('*').eq('is_active', true).order('exam_level').order('unit').order('part'),
       supabase.from('stock').select('id, book_id, available_qty'),
     ])
     if (!inst) { toast.error('Distributor not found'); navigate(`${basePath}/allotments`); return }
+    if (bksErr) toast.error('Could not load books — check Supabase RLS for accountant role')
     setInstitution(inst)
     setAllotments(alts || [])
     setBooks(bks || [])
