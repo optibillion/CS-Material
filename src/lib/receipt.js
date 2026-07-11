@@ -15,7 +15,7 @@ function bookRowHTML(b, i) {
       ${lvl ? `<div style="font-size:10px;color:#aaa;margin-top:2px">${lvl}</div>` : ''}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-left:12px;flex-shrink:0;padding-top:1px">
-      ${b.medium ? `<span style="display:inline-block;font-size:10px;font-weight:800;color:#fff;background:#bd0a0a;padding:3px 7px 4px;border-radius:4px;letter-spacing:0.8px;line-height:1">${b.medium === 'both' ? 'HINDI + ENGLISH' : b.medium.toUpperCase()}</span>` : ''}
+      ${b.medium ? `<span style="display:inline-block;font-size:10px;font-weight:800;color:#fff;background:#bd0a0a;padding:0 7px;border-radius:4px;letter-spacing:0.8px;height:18px;line-height:18px">${b.medium === 'both' ? 'HINDI + ENGLISH' : b.medium.toUpperCase()}</span>` : ''}
       <span style="font-size:12px;font-weight:700;color:#555">×${b.qty || 1}</span>
     </div>
   </div>`
