@@ -23,6 +23,7 @@ export default function IssuerSales() {
 
   const [buyerName, setBuyerName] = useState('')
   const [buyerPhone, setBuyerPhone] = useState('')
+  const [paymentMode, setPaymentMode] = useState('cash')
   const [saleMedium, setSaleMedium] = useState('')
   const [selectedBooks, setSelectedBooks] = useState([])
   const [finalPrice, setFinalPrice] = useState('')
@@ -41,7 +42,7 @@ export default function IssuerSales() {
       supabase.from('bundles').select('*, bundle_books(book_id)').eq('is_active', true),
       supabase.from('stock').select('id, book_id, available_qty, location'),
       supabase.from('sales')
-        .select('*, books(title, exam_level, unit, part), users!sales_sold_by_fkey(name)')
+        .select('*, books(title, exam_level, unit, part, medium), users!sales_sold_by_fkey(name)')
         .order('sold_at', { ascending: false })
     ])
     setBooks(booksData || [])
@@ -103,6 +104,7 @@ export default function IssuerSales() {
       total_price: i === 0 ? (parseFloat(finalPrice) || null) : null,
       sold_by: profile?.id,
       sold_at: now,
+      payment_mode: paymentMode,
       is_returned: false
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
@@ -119,14 +121,15 @@ export default function IssuerSales() {
       buyer_phone: buyerPhone.trim() || null,
       books: selectedBooks.map(b => {
         const book = books.find(bk => bk.id === b.id)
-        return { title: book?.title, exam_level: book?.exam_level, unit: book?.unit, part: book?.part, qty: parseInt(b.qty) || 1 }
+        return { title: book?.title, exam_level: book?.exam_level, unit: book?.unit, part: book?.part, medium: book?.medium, qty: parseInt(b.qty) || 1 }
       }),
       total_price: parseFloat(finalPrice) || null,
       sold_at: now,
       sold_by_name: profile?.name,
+      payment_mode: paymentMode,
       medium: saleMedium,
     })
-    setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setSelectedBooks([]); setFinalPrice('')
+    setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setPaymentMode('cash'); setSelectedBooks([]); setFinalPrice('')
     fetchData()
     setSubmitting(false)
   }
@@ -167,6 +170,7 @@ export default function IssuerSales() {
           sold_by_name: s.users?.name,
           sold_at: s.sold_at,
           total_price: null,
+          payment_mode: s.payment_mode || 'cash',
           books: [],
           ids: [],
           all_returned: true
@@ -174,7 +178,7 @@ export default function IssuerSales() {
       }
       const g = groups[key]
       if (s.total_price) g.total_price = s.total_price
-      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty, is_returned: s.is_returned })
+      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
       g.ids.push(s.id)
       if (!s.is_returned) g.all_returned = false
     }
@@ -211,6 +215,17 @@ export default function IssuerSales() {
             <label className="text-[#9ca3af] text-xs mb-1 block">Phone</label>
             <input value={buyerPhone} onChange={e => setBuyerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="10 digit number"
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+          </div>
+        </div>
+        <div>
+          <label className="text-[#9ca3af] text-xs mb-2 block">Payment Mode *</label>
+          <div className="grid grid-cols-2 gap-2">
+            {[{ val: 'cash', label: 'Cash' }, { val: 'online', label: 'Online' }].map(({ val, label }) => (
+              <button key={val} type="button" onClick={() => setPaymentMode(val)}
+                className={`py-2.5 rounded-lg border text-sm font-medium transition-all ${paymentMode === val ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:border-[#bd0a0a]'}`}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         <div>
@@ -414,7 +429,7 @@ export default function IssuerSales() {
               {/* Actions */}
               <div className="flex gap-2 mt-3 pt-3 border-t border-[#2a2a45]">
                 <button
-                  onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name })}
+                  onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name, payment_mode: txn.payment_mode })}
                   className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
                   <Receipt size={13} /> View Receipt
                 </button>

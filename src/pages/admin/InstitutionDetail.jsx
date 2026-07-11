@@ -212,6 +212,7 @@ export default function InstitutionDetail() {
         exam_level: a.books?.exam_level,
         unit: a.books?.unit,
         part: a.books?.part,
+        medium: a.books?.medium,
         qty: a.qty || 1,
       })
       groups[batchKey].totalQty += a.qty || 0

@@ -49,6 +49,7 @@ export default function ReceiptModal({ data, onClose }) {
             <p className="text-[#6b7280] text-xs mt-0.5">
               {data.books.length} book{data.books.length !== 1 ? 's' : ''}
               {data.total_price ? ` · ₹${data.total_price}` : ''}
+              {data.payment_mode ? ` · ${data.payment_mode === 'online' ? 'Online' : 'Cash'}` : ''}
               {data.sold_by_name ? ` · by ${data.sold_by_name}` : ''}
             </p>
             {data._fresh && <p className="text-emerald-400 text-xs mt-1">✓ Sale recorded</p>}

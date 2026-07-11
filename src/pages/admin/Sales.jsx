@@ -43,7 +43,7 @@ export default function Sales() {
   async function fetchSales() {
     setLoading(true)
     const { data } = await supabase.from('sales')
-      .select('*, books(title, exam_level, unit, part), users!sales_sold_by_fkey(name)')
+      .select('*, books(title, exam_level, unit, part, medium), users!sales_sold_by_fkey(name)')
       .order('sold_at', { ascending: false })
     setSales(data || []); setLoading(false)
   }
@@ -138,11 +138,12 @@ export default function Sales() {
       buyer_phone: buyerPhone.trim() || null,
       books: selectedBooks.map(b => {
         const book = books.find(bk => bk.id === b.id)
-        return { title: book?.title, exam_level: book?.exam_level, unit: book?.unit, part: book?.part, qty: parseInt(b.qty) || 1 }
+        return { title: book?.title, exam_level: book?.exam_level, unit: book?.unit, part: book?.part, medium: book?.medium, qty: parseInt(b.qty) || 1 }
       }),
       total_price: parseFloat(finalPrice) || null,
       sold_at: now,
       sold_by_name: profile?.name,
+      payment_mode: paymentMode,
       medium: saleMedium,
     })
     setRecordOpen(false); setRecording(false); setFinalPrice('')
@@ -169,7 +170,7 @@ export default function Sales() {
       }
       const g = groups[key]
       if (s.total_price) g.total_price = s.total_price
-      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, qty: s.qty, is_returned: s.is_returned })
+      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
       g.ids.push(s.id)
       if (!s.is_returned) g.all_returned = false
     }
@@ -317,7 +318,7 @@ export default function Sales() {
             {/* Actions */}
             <div className="flex gap-2 mt-3 pt-3 border-t border-[#2a2a45]">
               <button
-                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name })}
+                onClick={() => setReceiptData({ buyer_name: txn.buyer_name, buyer_phone: txn.buyer_phone, books: txn.books, total_price: txn.total_price, sold_at: txn.sold_at, sold_by_name: txn.sold_by_name, payment_mode: txn.payment_mode })}
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
                 <Receipt size={13} /> View Receipt
               </button>

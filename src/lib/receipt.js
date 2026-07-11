@@ -14,7 +14,10 @@ function bookRowHTML(b, i) {
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.35">${b.title}</div>
       ${lvl ? `<div style="font-size:10px;color:#aaa;margin-top:2px">${lvl}</div>` : ''}
     </div>
-    <span style="font-size:12px;font-weight:700;color:#555;padding-left:16px;flex-shrink:0;padding-top:1px">×${b.qty || 1}</span>
+    <div style="display:flex;align-items:center;gap:6px;padding-left:12px;flex-shrink:0;padding-top:1px">
+      ${b.medium ? `<span style="font-size:9px;font-weight:700;color:#fff;background:#bd0a0a;padding:2px 5px;border-radius:3px;text-transform:capitalize;letter-spacing:0.3px">${b.medium === 'both' ? 'H+E' : b.medium.slice(0, 2).toUpperCase()}</span>` : ''}
+      <span style="font-size:12px;font-weight:700;color:#555">×${b.qty || 1}</span>
+    </div>
   </div>`
 }
 
@@ -192,7 +195,7 @@ async function generatePDFFromHTML(html) {
 }
 
 export function buildWhatsAppText(data) {
-  const { buyer_name, buyer_phone, books, total_price, sold_at, sold_by_name } = data
+  const { buyer_name, buyer_phone, books, total_price, sold_at, sold_by_name, payment_mode } = data
   const date = sold_at ? format(new Date(sold_at), 'dd MMM yyyy, hh:mm a') : format(new Date(), 'dd MMM yyyy, hh:mm a')
   const bookLines = books.map((b, i) => {
     const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
@@ -206,6 +209,7 @@ export function buildWhatsAppText(data) {
     '*Buyer Details*',
     `Buyer Name: ${buyer_name}`,
     buyer_phone ? `Phone: ${buyer_phone}` : null,
+    payment_mode ? `Payment: ${payment_mode === 'online' ? 'Online' : 'Cash'}` : null,
     sold_by_name ? `Issued by: ${sold_by_name}` : null,
     '',
     '*Books Purchased*',
