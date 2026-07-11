@@ -268,3 +268,8 @@ export async function downloadAllotmentSlip(blob, distributorName) {
     if (e?.name !== 'AbortError') downloadBlob(blob, filename)
   }
 }
+
+export function saveSlipFile(blob, distributorName) {
+  const filename = `Distributor-Slip-${distributorName.replace(/\s+/g, '-')}.pdf`
+  downloadBlob(blob, filename)
+}
