@@ -27,21 +27,16 @@ export default function ReceiptModal({ data, onClose }) {
   if (!data) return null
 
   async function handleWhatsApp() {
-    let blob = pdfBlob
-    if (!blob) {
-      // Still generating — wait for it
-      setSharing(true)
-      try {
-        blob = await generateReceiptBlob(data)
-      } catch {
-        toast.error('Could not generate PDF')
-        setSharing(false)
-        return
-      }
+    if (sharing) return
+    setSharing(true)
+    try {
+      const blob = pdfBlob || await generateReceiptBlob(data)
+      await shareReceiptPDF(blob)
+    } catch {
+      toast.error('Could not generate PDF')
+    } finally {
       setSharing(false)
     }
-    // Call share immediately — no async gap between user tap and share call
-    await shareReceiptPDF(blob)
   }
 
   return (

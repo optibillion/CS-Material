@@ -33,14 +33,16 @@ function AllotmentSlipModal({ slipData, onClose }) {
   const totalQty = slipData.books.reduce((s, b) => s + (b.qty || 1), 0)
 
   async function handleShare() {
-    let blob = pdfBlob
-    if (!blob) {
-      setSharing(true)
-      try { blob = await generateAllotmentSlipBlob(slipData) }
-      catch { toast.error('Could not generate slip'); setSharing(false); return }
+    if (sharing) return
+    setSharing(true)
+    try {
+      const blob = pdfBlob || await generateAllotmentSlipBlob(slipData)
+      await downloadAllotmentSlip(blob, slipData.distributor_name)
+    } catch {
+      toast.error('Could not generate slip')
+    } finally {
       setSharing(false)
     }
-    await downloadAllotmentSlip(blob, slipData.distributor_name)
   }
 
   return (
