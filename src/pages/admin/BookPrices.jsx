@@ -4,10 +4,17 @@ import { Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 
+const MEDIUM_COLORS = {
+  hindi:   { bg: 'bg-[#bd0a0a]', text: 'text-white', label: 'HINDI' },
+  english: { bg: 'bg-[#f0a500]', text: 'text-black', label: 'ENGLISH' },
+  both:    { bg: 'bg-teal-600',  text: 'text-white', label: 'H + E' },
+}
+
 export default function BookPrices() {
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [mediumFilter, setMediumFilter] = useState('all')
   const [mrpEdits, setMrpEdits] = useState({})
   const [savingMrp, setSavingMrp] = useState(null)
 
@@ -37,11 +44,14 @@ export default function BookPrices() {
     fetchBooks()
   }
 
-  const filtered = books.filter(b =>
-    b.title?.toLowerCase().includes(search.toLowerCase()) ||
-    b.exam_level?.toLowerCase().includes(search.toLowerCase()) ||
-    b.unit?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = books.filter(b => {
+    const matchSearch =
+      b.title?.toLowerCase().includes(search.toLowerCase()) ||
+      b.exam_level?.toLowerCase().includes(search.toLowerCase()) ||
+      b.unit?.toLowerCase().includes(search.toLowerCase())
+    const matchMedium = mediumFilter === 'all' || b.medium === mediumFilter
+    return matchSearch && matchMedium
+  })
 
   const activeBooks = filtered.filter(b => b.is_active)
   const inactiveBooks = filtered.filter(b => !b.is_active)
@@ -55,17 +65,22 @@ export default function BookPrices() {
     const currentDisplay = editVal !== undefined ? editVal : (book.mrp != null ? String(book.mrp) : '')
     const isDirty = editVal !== undefined
 
+    const mc = MEDIUM_COLORS[book.medium] || MEDIUM_COLORS.hindi
+
     return (
       <div key={book.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[#2a2a45] last:border-0 transition-all ${!book.is_active ? 'opacity-40' : ''}`}>
         <div className="flex-1 min-w-0">
-          {lvl ? (
-            <>
+          <div className="flex items-center gap-2 flex-wrap">
+            {lvl ? (
               <p className="text-white text-sm font-semibold">{lvl}</p>
-              <p className="text-[#6b7280] text-xs truncate">{book.title}</p>
-            </>
-          ) : (
-            <p className="text-white text-sm font-semibold">{book.title}</p>
-          )}
+            ) : (
+              <p className="text-white text-sm font-semibold">{book.title}</p>
+            )}
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${mc.bg} ${mc.text} flex-shrink-0`}>
+              {mc.label}
+            </span>
+          </div>
+          {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{book.title}</p>}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {book.mrp != null && !isDirty && (
@@ -107,6 +122,27 @@ export default function BookPrices() {
           placeholder="Search by title, exam or unit…"
           className="w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-lg pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#f0a500] placeholder-[#4b5563]"
         />
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {[
+          { key: 'all',     label: 'All' },
+          { key: 'hindi',   label: 'Hindi' },
+          { key: 'english', label: 'English' },
+          { key: 'both',    label: 'Hindi + English' },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => setMediumFilter(key)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+              mediumFilter === key
+                ? key === 'hindi'   ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white'
+                : key === 'english' ? 'bg-[#f0a500] border-[#f0a500] text-black'
+                : key === 'both'    ? 'bg-teal-600 border-teal-600 text-white'
+                :                     'bg-white border-white text-black'
+                : 'bg-[#1a1a2e] border-[#2a2a45] text-[#9ca3af] hover:text-white'
+            }`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl overflow-hidden">
