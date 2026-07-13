@@ -125,6 +125,7 @@ export default function App() {
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
+          <Route path="books" element={<AdminBooks />} />
         </Route>
 
         {/* Accountant routes */}
@@ -134,6 +135,7 @@ export default function App() {
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="sales" element={<AccountantSalesView />} />
+          <Route path="books" element={<AdminBooks />} />
         </Route>
       </Routes>
     </BrowserRouter>

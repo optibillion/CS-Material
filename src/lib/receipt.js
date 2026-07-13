@@ -21,6 +21,34 @@ function bookRowHTML(b, i) {
   </div>`
 }
 
+function fmt(n) {
+  return n % 1 === 0 ? String(n) : n.toFixed(2)
+}
+
+function allotmentBookRowHTML(b, i, discPct) {
+  const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+  const mrp = b.unit_mrp || 0
+  const qty = b.qty || 1
+  const discountedPrice = mrp > 0 ? +(mrp * (1 - discPct / 100)).toFixed(2) : 0
+  const showPrice = mrp > 0
+
+  return `<div style="display:flex;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f0f0f0">
+    <span style="font-size:11px;color:#bbb;width:22px;flex-shrink:0;padding-top:1px">${i + 1}.</span>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.35">${b.title}</div>
+      ${lvl ? `<div style="font-size:10px;color:#aaa;margin-top:2px">${lvl}</div>` : ''}
+      ${showPrice && discPct > 0 ? `<div style="font-size:10px;color:#bbb;margin-top:2px">MRP <span style="text-decoration:line-through">₹${fmt(mrp)}</span></div>` : ''}
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-left:12px;flex-shrink:0;padding-top:1px">
+      ${b.medium ? `<div style="background:#bd0a0a;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:#fff;letter-spacing:1px;white-space:nowrap;text-align:center">${b.medium === 'both' ? 'HINDI + ENGLISH' : b.medium.toUpperCase()}</div>` : ''}
+      ${showPrice
+        ? `<div style="text-align:right"><span style="font-size:13px;font-weight:700;color:#bd0a0a">₹${fmt(discountedPrice)}</span><span style="font-size:11px;color:#555"> ×${qty}</span></div>`
+        : `<span style="font-size:12px;font-weight:700;color:#555">×${qty}</span>`
+      }
+    </div>
+  </div>`
+}
+
 function pageShell(title, badgeLabel, bodyContent) {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -85,9 +113,15 @@ function buildReceiptHTML(data) {
 }
 
 function buildAllotmentSlipHTML(data) {
-  const { distributor_name, distributor_location, distributor_phone, books, allotted_at, allotted_by_name } = data
+  const { distributor_name, distributor_location, distributor_phone, books, allotted_at, allotted_by_name, discount_pct } = data
   const date = format(new Date(allotted_at), 'dd MMM yyyy, hh:mm a')
   const totalQty = books.reduce((s, b) => s + (b.qty || 1), 0)
+  const discPct = discount_pct || 0
+
+  const booksWithPrice = books.filter(b => (b.unit_mrp || 0) > 0)
+  const hasPrice = booksWithPrice.length > 0
+  const totalOriginal = booksWithPrice.reduce((s, b) => s + (b.unit_mrp * (b.qty || 1)), 0)
+  const totalDiscounted = booksWithPrice.reduce((s, b) => s + (+(b.unit_mrp * (1 - discPct / 100)).toFixed(2) * (b.qty || 1)), 0)
 
   const body = `
   <div style="padding:36px 48px 0;flex:1">
@@ -102,16 +136,39 @@ function buildAllotmentSlipHTML(data) {
           <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_location}</td></tr>` : ''}
       ${distributor_phone ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Phone</td>
           <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_phone}</td></tr>` : ''}
+      ${discPct > 0 ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Discount</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:700;color:#16a34a">${discPct}% off</td></tr>` : ''}
     </table>
     ${RULER}
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#bd0a0a;margin-bottom:4px">Books Dispatched</div>
-    <div>${books.map(bookRowHTML).join('')}</div>
+    <div>${books.map((b, i) => allotmentBookRowHTML(b, i, discPct)).join('')}</div>
     <div style="border-top:2px solid #1a1a1a;margin-top:16px"></div>
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
-      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">Total Books</span>
-      <span style="font-size:26px;font-weight:800;color:#bd0a0a">${totalQty}</span>
-    </div>
-    <div style="border-top:2px solid #1a1a1a"></div>
+    ${hasPrice ? `
+      <div style="padding:10px 0 4px">
+        ${discPct > 0 ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:10px;color:#aaa;font-weight:700;text-transform:uppercase;letter-spacing:1px">Original Total</span>
+            <span style="font-size:14px;color:#aaa;text-decoration:line-through">₹${fmt(totalOriginal)}</span>
+          </div>
+        ` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">${discPct > 0 ? 'Total After Discount' : 'Total Amount'}</span>
+          <span style="font-size:26px;font-weight:800;color:#bd0a0a">₹${fmt(totalDiscounted)}</span>
+        </div>
+        ${discPct > 0 ? `
+          <div style="text-align:right;margin-top:4px">
+            <span style="font-size:10px;background:#16a34a;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">SAVED ₹${fmt(+(totalOriginal - totalDiscounted).toFixed(2))}</span>
+          </div>
+        ` : ''}
+      </div>
+      <div style="border-top:2px solid #1a1a1a"></div>
+    ` : `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">Total Books</span>
+        <span style="font-size:26px;font-weight:800;color:#bd0a0a">${totalQty}</span>
+      </div>
+      <div style="border-top:2px solid #1a1a1a"></div>
+    `}
   </div>
   <div style="padding:28px 48px 36px;text-align:center">
     ${RULER}

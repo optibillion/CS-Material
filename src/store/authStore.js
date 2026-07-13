@@ -11,6 +11,7 @@ export const useAuthStore = create(
       isAccountant: false,
       allotmentAccess: null,
       stockAccess: null,
+      priceAccess: false,
       loginAt: null,
 
       login: async (username, password) => {
@@ -50,6 +51,7 @@ export const useAuthStore = create(
           isAccountant,
           allotmentAccess: fullAccess ? 'edit' : (safeProfile.can_allot || null),
           stockAccess: fullAccess ? 'edit' : (safeProfile.can_stock || null),
+          priceAccess: fullAccess || !!safeProfile.can_price,
           loginAt: Date.now()
         })
         return safeProfile
@@ -57,12 +59,12 @@ export const useAuthStore = create(
 
       logout: async () => {
         await supabase.auth.signOut()
-        set({ user: null, profile: null, isAdmin: false, isAccountant: false, allotmentAccess: null, stockAccess: null, loginAt: null })
+        set({ user: null, profile: null, isAdmin: false, isAccountant: false, allotmentAccess: null, stockAccess: null, priceAccess: false, loginAt: null })
       }
     }),
     {
       name: 'csmdis-auth',
-      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, loginAt: state.loginAt })
+      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, loginAt: state.loginAt })
     }
   )
 )

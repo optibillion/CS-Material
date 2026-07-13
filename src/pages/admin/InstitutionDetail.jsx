@@ -31,6 +31,9 @@ function AllotmentSlipModal({ slipData, onClose }) {
   if (!slipData) return null
 
   const totalQty = slipData.books.reduce((s, b) => s + (b.qty || 1), 0)
+  const discPct = slipData.discount_pct || 0
+  const hasPricing = slipData.books.some(b => (b.unit_mrp || 0) > 0)
+  const totalValue = hasPricing ? slipData.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - discPct / 100)).toFixed(2) * (b.qty || 1), 0) : 0
 
   async function handleShare() {
     if (sharing) return
@@ -54,6 +57,11 @@ function AllotmentSlipModal({ slipData, onClose }) {
             <p className="text-[#6b7280] text-xs mt-0.5">
               {slipData.books.length} title{slipData.books.length !== 1 ? 's' : ''} · {totalQty} copies
             </p>
+            {hasPricing && (
+              <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">
+                ₹{Math.round(totalValue)} total{discPct > 0 ? ` · ${discPct}% off` : ''}
+              </p>
+            )}
             <p className="text-[#6b7280] text-xs mt-0.5">
               {format(new Date(slipData.allotted_at), 'dd MMM yyyy, hh:mm a')}
             </p>
@@ -159,6 +167,7 @@ export default function InstitutionDetail() {
   const [unitFilter, setUnitFilter] = useState('all')
   const [qtyMap, setQtyMap] = useState({}) // { bookId: qty string }
   const [deductStock, setDeductStock] = useState(false)
+  const [discountPct, setDiscountPct] = useState(0)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => { fetchAll() }, [id])
@@ -205,8 +214,12 @@ export default function InstitutionDetail() {
           allotted_by_name: a.users?.name,
           books: [],
           totalQty: 0,
+          discount_pct: a.discount_pct || 0,
+          totalValue: 0,
         }
       }
+      const mrp = a.unit_mrp || 0
+      const disc = groups[batchKey].discount_pct
       groups[batchKey].books.push({
         title: a.books?.title,
         exam_level: a.books?.exam_level,
@@ -214,8 +227,10 @@ export default function InstitutionDetail() {
         part: a.books?.part,
         medium: a.books?.medium,
         qty: a.qty || 1,
+        unit_mrp: a.unit_mrp || null,
       })
       groups[batchKey].totalQty += a.qty || 0
+      groups[batchKey].totalValue += +(mrp * (1 - disc / 100)).toFixed(2) * (a.qty || 1)
     }
     return Object.values(groups).sort((a, b) => new Date(b.allotted_at) - new Date(a.allotted_at))
   }, [allotments])
@@ -228,6 +243,7 @@ export default function InstitutionDetail() {
       books: batch.books,
       allotted_at: batch.allotted_at,
       allotted_by_name: batch.allotted_by_name,
+      discount_pct: batch.discount_pct || 0,
     })
   }
 
@@ -253,19 +269,22 @@ export default function InstitutionDetail() {
   )
   const selectedBooks = books.filter(b => parseInt(qtyMap[b.id] || 0) > 0)
 
-  function openIssue() { setQtyMap({}); setDeductStock(true); setExamFilter('all'); setUnitFilter('all'); setIssueOpen(true) }
+  function openIssue() { setQtyMap({}); setDeductStock(true); setDiscountPct(0); setExamFilter('all'); setUnitFilter('all'); setIssueOpen(true) }
 
   async function handleIssue() {
     if (selectedBooks.length === 0) { toast.error('Select at least one book with quantity'); return }
     setSubmitting(true)
+    const issuedAt = new Date().toISOString()
     const rows = selectedBooks.map(b => ({
       institution_id: id,
       book_id: b.id,
       qty: parseInt(qtyMap[b.id]),
       allotted_by: profile?.id,
-      allotted_at: new Date().toISOString(),
+      allotted_at: issuedAt,
       type: 'external',
       institution_name: institution.name,
+      discount_pct: discountPct || 0,
+      unit_mrp: b.mrp || null,
     }))
     const { error } = await supabase.from('allotments').insert(rows)
     if (error) { toast.error('Failed to record allotment'); setSubmitting(false); return }
@@ -290,10 +309,29 @@ export default function InstitutionDetail() {
       const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
       return `${b.title}${lvl ? ` (${lvl})` : ''} ×${qtyMap[b.id]}`
     }).join(', ')
-    logAction('ALLOTMENT_CREATED', `${institution.name} — ${selectedBooks.length} book(s): ${bookList}${deductStock ? ' [stock deducted]' : ''}`)
+    logAction('ALLOTMENT_CREATED', `${institution.name} — ${selectedBooks.length} book(s): ${bookList}${deductStock ? ' [stock deducted]' : ''}${discountPct > 0 ? ` [${discountPct}% discount]` : ''}`)
     toast.success(`${selectedBooks.length} book(s) allotted to ${institution.name}`)
     setSubmitting(false)
     setIssueOpen(false)
+
+    setSlipModal({
+      distributor_name: institution.name,
+      distributor_location: institution.location,
+      distributor_phone: institution.phone,
+      books: selectedBooks.map(b => ({
+        title: b.title,
+        exam_level: b.exam_level,
+        unit: b.unit,
+        part: b.part,
+        medium: b.medium,
+        qty: parseInt(qtyMap[b.id]),
+        unit_mrp: b.mrp || null,
+      })),
+      discount_pct: discountPct || 0,
+      allotted_at: issuedAt,
+      allotted_by_name: profile?.name,
+    })
+
     fetchAll()
   }
 
@@ -390,11 +428,19 @@ export default function InstitutionDetail() {
               <div key={batch.key} className="px-5 py-4">
                 <div className="flex items-start justify-between mb-3">
                   <div>
-                    <p className="text-white text-sm font-semibold">{batch.books.length} title{batch.books.length !== 1 ? 's' : ''} · {batch.totalQty} copies</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-white text-sm font-semibold">{batch.books.length} title{batch.books.length !== 1 ? 's' : ''} · {batch.totalQty} copies</p>
+                      {batch.discount_pct > 0 && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-medium">{batch.discount_pct}% off</span>
+                      )}
+                    </div>
                     <p className="text-[#6b7280] text-xs mt-0.5">
                       {format(new Date(batch.allotted_at), 'dd MMM yy, hh:mm a')}
                       {batch.allotted_by_name ? ` · by ${batch.allotted_by_name}` : ''}
                     </p>
+                    {batch.totalValue > 0 && (
+                      <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
+                    )}
                   </div>
                   <button
                     onClick={() => openSlipModal(batch)}
@@ -530,6 +576,34 @@ export default function InstitutionDetail() {
                   <p className="text-[#6b7280] text-xs">{deductStock ? 'Uncheck to skip stock deduction' : 'Check to reduce available inventory'}</p>
                 </div>
               </label>
+
+              <div className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${discountPct > 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
+                <div className="flex-1">
+                  <p className="text-white text-sm font-medium">Distributor Discount</p>
+                  <p className="text-[#6b7280] text-xs">0% = full MRP · 100% = free</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <input
+                    type="number" min="0" max="100" placeholder="0"
+                    value={discountPct || ''}
+                    onChange={e => {
+                      const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                      setDiscountPct(v)
+                    }}
+                    className="w-16 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:border-emerald-500"
+                  />
+                  <span className="text-white text-sm font-bold">%</span>
+                </div>
+              </div>
+
+              {selectedBooks.length > 0 && selectedBooks.some(b => b.mrp) && (
+                <div className="bg-[#12121f] rounded-lg px-3 py-2 flex items-center justify-between">
+                  <span className="text-[#6b7280] text-xs">Value to distributor</span>
+                  <span className="text-[#f0a500] text-sm font-bold">
+                    ₹{Math.round(selectedBooks.reduce((s, b) => s + (b.mrp || 0) * (1 - discountPct / 100) * parseInt(qtyMap[b.id] || 0), 0))}
+                  </span>
+                </div>
+              )}
 
               <button onClick={handleIssue} disabled={submitting || selectedBooks.length === 0}
                 className="w-full py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all disabled:opacity-50">

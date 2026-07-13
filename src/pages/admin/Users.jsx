@@ -180,6 +180,13 @@ async function setPermission(user, field, value) {
   fetchUsers()
 }
 
+async function togglePrice(user) {
+  const { error } = await supabase.from('users').update({ can_price: !user.can_price }).eq('id', user.id)
+  if (error) { toast.error('Failed to update permission'); return }
+  logAction('USER_UPDATED', `${user.name} (@${user.username}) — can_price set to ${!user.can_price}`)
+  fetchUsers()
+}
+
   const filtered = users.filter(u =>
     u.name?.toLowerCase().includes(search.toLowerCase()) ||
     u.username?.toLowerCase().includes(search.toLowerCase()) ||
@@ -270,6 +277,13 @@ async function setPermission(user, field, value) {
                             </button>
                           ))}
                         </div>
+                      </div>
+                      <div>
+                        <p className="text-[#6b7280] text-xs mb-1">Book Pricing</p>
+                        <button onClick={() => togglePrice(u)}
+                          className={`text-xs px-2 py-0.5 rounded border font-medium transition-all ${u.can_price ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
+                          {u.can_price ? 'enabled' : 'off'}
+                        </button>
                       </div>
                     </div>
                   ) : (
