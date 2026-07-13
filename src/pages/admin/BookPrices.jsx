@@ -23,16 +23,16 @@ export default function BookPrices() {
     setLoading(false)
   }
 
-  async function handleSave(book, value) {
+  async function handleSave(bookId, bookTitle, value) {
     const trimmed = String(value).trim()
     const parsed = trimmed === '' ? null : parseFloat(trimmed)
     if (trimmed !== '' && (isNaN(parsed) || parsed < 0)) { toast.error('Enter a valid price'); return }
-    setSavingMrp(book.id)
-    const { error } = await supabase.from('books').update({ mrp: parsed }).eq('id', book.id)
+    setSavingMrp(bookId)
+    const { error } = await supabase.from('books').update({ mrp: parsed }).eq('id', bookId)
     if (error) { toast.error('Failed to save'); setSavingMrp(null); return }
     toast.success(parsed != null ? `MRP updated to ₹${parsed}` : 'MRP cleared')
-    logAction('BOOK_UPDATED', `${book.title} — MRP set to ${parsed != null ? '₹' + parsed : 'none'}`)
-    setMrpEdits(e => { const n = { ...e }; delete n[book.id]; return n })
+    logAction('BOOK_UPDATED', `${bookTitle} — MRP set to ${parsed != null ? '₹' + parsed : 'none'}`)
+    setMrpEdits(e => { const n = { ...e }; delete n[bookId]; return n })
     setSavingMrp(null)
     fetchBooks()
   }
@@ -46,14 +46,17 @@ export default function BookPrices() {
   const activeBooks = filtered.filter(b => b.is_active)
   const inactiveBooks = filtered.filter(b => !b.is_active)
 
-  function BookRow({ book }) {
+  const priceSetCount = books.filter(b => b.is_active && b.mrp != null).length
+  const activeCount = books.filter(b => b.is_active).length
+
+  function renderRow(book) {
     const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
     const editVal = mrpEdits[book.id]
     const currentDisplay = editVal !== undefined ? editVal : (book.mrp != null ? String(book.mrp) : '')
     const isDirty = editVal !== undefined
 
     return (
-      <div className={`flex items-center gap-3 px-4 py-3 border-b border-[#2a2a45] last:border-0 transition-all ${!book.is_active ? 'opacity-40' : ''}`}>
+      <div key={book.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[#2a2a45] last:border-0 transition-all ${!book.is_active ? 'opacity-40' : ''}`}>
         <div className="flex-1 min-w-0">
           {lvl ? (
             <>
@@ -66,7 +69,7 @@ export default function BookPrices() {
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {book.mrp != null && !isDirty && (
-            <span className="text-[#6b7280] text-xs">current: ₹{book.mrp}</span>
+            <span className="text-[#6b7280] text-xs">₹{book.mrp}</span>
           )}
           <span className="text-[#6b7280] text-sm">₹</span>
           <input
@@ -74,11 +77,11 @@ export default function BookPrices() {
             placeholder={book.mrp != null ? String(book.mrp) : '—'}
             value={currentDisplay}
             onChange={e => setMrpEdits(m => ({ ...m, [book.id]: e.target.value }))}
-            onKeyDown={e => { if (e.key === 'Enter' && isDirty) handleSave(book, editVal) }}
+            onKeyDown={e => { if (e.key === 'Enter' && isDirty) handleSave(book.id, book.title, editVal) }}
             className={`w-24 bg-[#12121f] border rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none transition-all ${isDirty ? 'border-[#f0a500] focus:border-[#f0a500]' : 'border-[#2a2a45] focus:border-[#f0a500]'}`}
           />
           <button
-            onClick={() => isDirty && handleSave(book, editVal)}
+            onClick={() => isDirty && handleSave(book.id, book.title, editVal)}
             disabled={!isDirty || savingMrp === book.id}
             className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all w-14 text-center ${isDirty ? 'bg-[#f0a500] hover:bg-[#d4920a] text-black' : 'bg-[#2a2a45] text-[#4b5563] cursor-default'}`}>
             {savingMrp === book.id ? '…' : isDirty ? 'Save' : 'set'}
@@ -87,9 +90,6 @@ export default function BookPrices() {
       </div>
     )
   }
-
-  const priceSetCount = books.filter(b => b.is_active && b.mrp != null).length
-  const activeCount = books.filter(b => b.is_active).length
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -124,13 +124,13 @@ export default function BookPrices() {
           <p className="text-[#6b7280] text-sm text-center py-10">No books found</p>
         ) : (
           <>
-            {activeBooks.map(book => <BookRow key={book.id} book={book} />)}
+            {activeBooks.map(book => renderRow(book))}
             {inactiveBooks.length > 0 && (
               <>
                 <div className="px-4 py-2 bg-[#12121f] border-t border-[#2a2a45]">
                   <p className="text-[#4b5563] text-xs font-medium uppercase tracking-wide">Inactive Books</p>
                 </div>
-                {inactiveBooks.map(book => <BookRow key={book.id} book={book} />)}
+                {inactiveBooks.map(book => renderRow(book))}
               </>
             )}
           </>
