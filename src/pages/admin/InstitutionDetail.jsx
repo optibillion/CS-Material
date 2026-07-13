@@ -176,7 +176,7 @@ export default function InstitutionDetail() {
     setLoading(true)
     const [{ data: inst }, { data: alts }, { data: bks, error: bksErr }, { data: stk }] = await Promise.all([
       supabase.from('institutions').select('*').eq('id', id).single(),
-      supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium), users(name)').eq('institution_id', id).order('allotted_at', { ascending: false }),
+      supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium, mrp), users(name)').eq('institution_id', id).order('allotted_at', { ascending: false }),
       supabase.from('books').select('*').eq('is_active', true).order('exam_level').order('unit').order('part'),
       supabase.from('stock').select('id, book_id, available_qty'),
     ])
@@ -218,7 +218,8 @@ export default function InstitutionDetail() {
           totalValue: 0,
         }
       }
-      const mrp = a.unit_mrp || 0
+      const unit_mrp = a.unit_mrp ?? a.books?.mrp ?? null
+      const mrp = unit_mrp || 0
       const disc = groups[batchKey].discount_pct
       groups[batchKey].books.push({
         title: a.books?.title,
@@ -227,7 +228,7 @@ export default function InstitutionDetail() {
         part: a.books?.part,
         medium: a.books?.medium,
         qty: a.qty || 1,
-        unit_mrp: a.unit_mrp || null,
+        unit_mrp,
       })
       groups[batchKey].totalQty += a.qty || 0
       groups[batchKey].totalValue += +(mrp * (1 - disc / 100)).toFixed(2) * (a.qty || 1)
