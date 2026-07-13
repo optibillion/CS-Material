@@ -14,6 +14,7 @@ import AccountantLayout from './components/AccountantLayout'
 import AdminDashboard from './pages/admin/Dashboard'
 import AdminStudents from './pages/admin/Students'
 import AdminBooks from './pages/admin/Books'
+import BookPrices from './pages/admin/BookPrices'
 import AdminBundles from './pages/admin/Bundles'
 import AdminIssuances from './pages/admin/Issuances'
 import AdminSales from './pages/admin/Sales'
@@ -100,6 +101,7 @@ export default function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="students" element={<AdminStudents />} />
           <Route path="books" element={<AdminBooks />} />
+          <Route path="book-prices" element={<BookPrices />} />
           <Route path="bundles" element={<AdminBundles />} />
           <Route path="issuances" element={<AdminIssuances />} />
           <Route path="sales" element={<AdminSales />} />
@@ -125,7 +127,7 @@ export default function App() {
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
-          <Route path="books" element={<AdminBooks />} />
+          <Route path="books" element={<BookPrices />} />
         </Route>
 
         {/* Accountant routes */}
@@ -135,7 +137,7 @@ export default function App() {
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="sales" element={<AccountantSalesView />} />
-          <Route path="books" element={<AdminBooks />} />
+          <Route path="books" element={<BookPrices />} />
         </Route>
       </Routes>
     </BrowserRouter>

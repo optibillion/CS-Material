@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, BookOpen, Package, Send, ShoppingCart, Building2, Archive, UserCog, FileText, ClipboardList, LogOut, Menu, X, GraduationCap } from 'lucide-react'
+import { LayoutDashboard, Users, BookOpen, Package, Send, ShoppingCart, Building2, Archive, UserCog, FileText, ClipboardList, LogOut, Menu, X, GraduationCap, Tag } from 'lucide-react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/admin/students', label: 'Students', icon: Users },
   { to: '/admin/issuances', label: 'Issuances', icon: Send },
   { to: '/admin/books', label: 'Books', icon: BookOpen },
+  { to: '/admin/book-prices', label: 'Book Prices', icon: Tag },
   { to: '/admin/bundles', label: 'Bundles', icon: Package },
   { to: '/admin/batches', label: 'Batches', icon: GraduationCap },
   { to: '/admin/inventory', label: 'Inventory', icon: Archive },

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Plus, Search, BookOpen, Eye, EyeOff, Package, Tag } from 'lucide-react'
+import { Plus, Search, BookOpen, Eye, EyeOff, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
-import { useAuthStore } from '../../store/authStore'
 
 const CATEGORIES = ['booklet', 'notes', 'test_series', 'paper_set']
 const MEDIUMS = ['hindi', 'english', 'both']
@@ -135,8 +134,6 @@ function BundlePromptModal({ open, onClose, onConfirm, bundles, bookTitle }) {
 }
 
 export default function Books() {
-  const { isAdmin, priceAccess } = useAuthStore()
-
   const [books, setBooks] = useState([])
   const [issuanceCounts, setIssuanceCounts] = useState({})
   const [stockMap, setStockMap] = useState({})
@@ -148,10 +145,6 @@ export default function Books() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [bundlePrompt, setBundlePrompt] = useState(null)
-
-  const [activeTab, setActiveTab] = useState(isAdmin ? 'catalogue' : 'prices')
-  const [mrpEdits, setMrpEdits] = useState({})
-  const [savingMrp, setSavingMrp] = useState(null)
 
   useEffect(() => { fetchBooks() }, [])
 
@@ -232,21 +225,7 @@ export default function Books() {
     fetchBooks()
   }
 
-  async function handleSaveMrp(book, value) {
-    const trimmed = String(value).trim()
-    const parsed = trimmed === '' ? null : parseFloat(trimmed)
-    if (trimmed !== '' && (isNaN(parsed) || parsed < 0)) { toast.error('Enter a valid price'); return }
-    setSavingMrp(book.id)
-    const { error } = await supabase.from('books').update({ mrp: parsed }).eq('id', book.id)
-    if (error) { toast.error('Failed to save MRP'); setSavingMrp(null); return }
-    toast.success(parsed != null ? `MRP set to ₹${parsed} for ${book.title}` : `MRP cleared for ${book.title}`)
-    logAction('BOOK_UPDATED', `${book.title} — MRP set to ${parsed != null ? '₹' + parsed : 'none'}`)
-    setMrpEdits(e => { const n = { ...e }; delete n[book.id]; return n })
-    setSavingMrp(null)
-    fetchBooks()
-  }
-
-  const examOptions = [...new Set(books.map(b => b.exam_level).filter(Boolean))].sort()
+const examOptions = [...new Set(books.map(b => b.exam_level).filter(Boolean))].sort()
   const unitOptions = [...new Set(
     books.filter(b => filterExam === 'all' || b.exam_level === filterExam).map(b => b.unit).filter(Boolean)
   )].sort()
@@ -259,94 +238,19 @@ export default function Books() {
     return matchSearch && matchCat && matchExam && matchUnit
   })
 
-  const sortedBooksForPricing = [...books].sort((a, b) => {
-    if (a.is_active === b.is_active) return 0
-    return a.is_active ? -1 : 1
-  })
-
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-white text-2xl font-bold">{!isAdmin && priceAccess ? 'Book Prices' : 'Books'}</h1>
+          <h1 className="text-white text-2xl font-bold">Books</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{books.length} total in catalogue</p>
         </div>
-        {isAdmin && activeTab === 'catalogue' && (
-          <button onClick={() => { setEditing(null); setModalOpen(true) }}
-            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-            <Plus size={16} /> Add Book
-          </button>
-        )}
+        <button onClick={() => { setEditing(null); setModalOpen(true) }}
+          className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+          <Plus size={16} /> Add Book
+        </button>
       </div>
 
-      {/* Tab switcher — only for admin who can see both tabs */}
-      {isAdmin && priceAccess && (
-        <div className="flex gap-1 bg-[#12121f] p-1 rounded-xl w-fit">
-          <button onClick={() => setActiveTab('catalogue')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'catalogue' ? 'bg-[#1a1a2e] text-white' : 'text-[#6b7280] hover:text-white'}`}>
-            <BookOpen size={14} /> Book Catalogue
-          </button>
-          <button onClick={() => setActiveTab('prices')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === 'prices' ? 'bg-[#1a1a2e] text-white' : 'text-[#6b7280] hover:text-white'}`}>
-            <Tag size={14} /> Book Prices
-          </button>
-        </div>
-      )}
-
-      {/* Book Prices Tab */}
-      {activeTab === 'prices' && priceAccess && (
-        <div className="space-y-2">
-          <p className="text-[#6b7280] text-xs">Set the MRP (Maximum Retail Price) for each book. This price is used when issuing books to distributors with a discount.</p>
-          {loading ? [...Array(5)].map((_, i) => (
-            <div key={i} className="h-14 bg-[#1a1a2e] border border-[#2a2a45] rounded-xl animate-pulse" />
-          )) : sortedBooksForPricing.map(book => {
-            const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
-            const editVal = mrpEdits[book.id]
-            const currentDisplay = editVal !== undefined ? editVal : (book.mrp != null ? String(book.mrp) : '')
-            const isDirty = editVal !== undefined
-            return (
-              <div key={book.id} className={`flex items-center gap-3 px-4 py-3 bg-[#1a1a2e] border rounded-xl transition-all ${isDirty ? 'border-[#f0a500]/50' : 'border-[#2a2a45]'} ${!book.is_active ? 'opacity-50' : ''}`}>
-                <div className="flex-1 min-w-0">
-                  {lvl ? (
-                    <>
-                      <p className="text-white text-sm font-semibold">{lvl}</p>
-                      <p className="text-[#6b7280] text-xs truncate">{book.title}</p>
-                    </>
-                  ) : (
-                    <p className="text-white text-sm font-semibold">{book.title}</p>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-[#6b7280] text-sm font-medium">₹</span>
-                  <input
-                    type="number" min="0" step="0.01" placeholder="—"
-                    value={currentDisplay}
-                    onChange={e => setMrpEdits(m => ({ ...m, [book.id]: e.target.value }))}
-                    className="w-24 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none focus:border-[#f0a500]"
-                  />
-                  {isDirty && (
-                    <button
-                      onClick={() => handleSaveMrp(book, editVal)}
-                      disabled={savingMrp === book.id}
-                      className="text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all disabled:opacity-50">
-                      {savingMrp === book.id ? '…' : 'Save'}
-                    </button>
-                  )}
-                  {!isDirty && book.mrp != null && (
-                    <span className="text-emerald-400 text-xs w-10 text-center">set</span>
-                  )}
-                  {!isDirty && book.mrp == null && (
-                    <span className="text-[#4b5563] text-xs w-10 text-center">—</span>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {/* Book Catalogue Tab (admin only) */}
-      {activeTab === 'catalogue' && isAdmin && (<>
       <div className="flex flex-wrap gap-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
@@ -513,7 +417,6 @@ export default function Books() {
         bundles={bundlePrompt?.bundles}
         bookTitle={bundlePrompt?.bookTitle}
       />
-      </>)}
     </div>
   )
 }
