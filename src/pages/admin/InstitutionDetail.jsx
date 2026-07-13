@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
@@ -19,6 +19,7 @@ function WhatsAppIcon() {
 function AllotmentSlipModal({ slipData, onClose }) {
   const [pdfBlob, setPdfBlob] = useState(null)
   const [sharing, setSharing] = useState(false)
+  const sharingRef = useRef(false)
 
   useEffect(() => {
     if (!slipData) return
@@ -36,7 +37,8 @@ function AllotmentSlipModal({ slipData, onClose }) {
   const totalValue = hasPricing ? slipData.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - discPct / 100)).toFixed(2) * (b.qty || 1), 0) : 0
 
   async function handleShare() {
-    if (sharing) return
+    if (sharingRef.current) return
+    sharingRef.current = true
     setSharing(true)
     try {
       const blob = pdfBlob || await generateAllotmentSlipBlob(slipData)
@@ -44,6 +46,7 @@ function AllotmentSlipModal({ slipData, onClose }) {
     } catch {
       toast.error('Could not generate slip')
     } finally {
+      sharingRef.current = false
       setSharing(false)
     }
   }
