@@ -26,17 +26,16 @@ function StudentAvatar({ url, name, size = 28 }) {
 }
 
 function AddStudentModal({ open, onClose, onSave, batches }) {
-  const [form, setForm] = useState({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' })
+  const [form, setForm] = useState({ name: '', phone: '', admission_date: '', batch_id: '', medium: '' })
   const [errors, setErrors] = useState({})
   const [photoFile, setPhotoFile] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [cameraOpen, setCameraOpen] = useState(false)
   const fileInputRef = useRef(null)
   const today = new Date().toISOString().split('T')[0]
-  const dobMax = new Date(new Date().setFullYear(new Date().getFullYear() - 15)).toISOString().split('T')[0]
   useEffect(() => {
     if (open) {
-      setForm({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' })
+      setForm({ name: '', phone: '', admission_date: '', batch_id: '', medium: '' })
       setErrors({})
       setPhotoFile(null)
       setPhotoPreview(null)
@@ -54,8 +53,6 @@ function AddStudentModal({ open, onClose, onSave, batches }) {
     if (!form.name.trim()) errs.name = 'Name is required'
     if (!form.phone) errs.phone = 'Phone is required'
     else if (!/^\d{10}$/.test(form.phone)) errs.phone = 'Must be exactly 10 digits'
-    if (!form.dob) errs.dob = 'Date of birth is required'
-    else if (form.dob < '1960-01-01' || form.dob > dobMax) errs.dob = 'Enter a valid date of birth (age 15–65)'
     if (form.admission_date && (form.admission_date < '2010-01-01' || form.admission_date > today))
       errs.admission_date = 'Must be between 2010 and today'
     if (!form.medium) errs.medium = 'Medium is required'
@@ -102,20 +99,11 @@ function AddStudentModal({ open, onClose, onSave, batches }) {
               className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none placeholder-[#4b5563] ${errors.name ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
             {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone * (10 digits)</label>
-              <input value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="10 digit number"
-                className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none placeholder-[#4b5563] ${errors.phone ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
-              {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
-            </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Date of Birth *</label>
-              <input type="date" value={form.dob} onChange={e => set('dob', e.target.value)}
-                min="1960-01-01" max={dobMax}
-                className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.dob ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
-              {errors.dob && <p className="text-red-400 text-xs mt-1">{errors.dob}</p>}
-            </div>
+          <div>
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone * (10 digits)</label>
+            <input value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="10 digit number"
+              className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none placeholder-[#4b5563] ${errors.phone ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
+            {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Admission Date</label>
@@ -166,7 +154,6 @@ function EditStudentModal({ open, onClose, onSave, student, batches }) {
       setForm({
         name: student.name || '',
         phone: student.phone || '',
-        dob: student.dob || '',
         admission_date: student.admission_date || '',
         batch_id: student.batch_id || '',
         medium: student.medium || '',
@@ -246,18 +233,11 @@ function EditStudentModal({ open, onClose, onSave, student, batches }) {
               className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.name ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
             {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone</label>
-              <input value={form.phone || ''} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.phone ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
-              {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
-            </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Date of Birth</label>
-              <input type="date" value={form.dob || ''} onChange={e => set('dob', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-            </div>
+          <div>
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone</label>
+            <input value={form.phone || ''} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+              className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.phone ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
+            {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Admission Date</label>
@@ -297,7 +277,6 @@ const BULK_FIELD_ALIASES = {
   student_id:     ['स्टूडेंट id', 'स्टूडेंट आईडी', 'student id', 'id', 'roll no', 'roll number', 'rollno'],
   name:           ['नाम', 'name', 'full name', 'student name', 'student'],
   phone:          ['फ़ोन', 'फोन', 'phone', 'mobile', 'मोबाइल', 'contact', 'number'],
-  dob:            ['जन्म तिथि', 'जन्म', 'dob', 'date of birth', 'birth'],
   admission_date: ['प्रवेश तिथि', 'प्रवेश', 'admission', 'joining', 'admit'],
   medium:         ['माध्यम', 'medium', 'language', 'lang', 'भाषा'],
   batch:          ['बैच', 'batch'],
@@ -344,7 +323,7 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
     if (field === 'student_id') return v.toUpperCase()
     if (field === 'phone') return v.replace(/\D/g, '').slice(0, 10)
     // dates stored as raw DD/MM/YYYY — parsed only on create
-    if (field === 'dob' || field === 'admission_date') return v
+    if (field === 'admission_date') return v
     // medium and batch_text stored as raw — parsed only on create
     return v
   }
@@ -362,7 +341,7 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
         if (idx < updated.length) {
           updated[idx] = { ...updated[idx], [field]: processed }
         } else {
-          const blank = { student_id: '', name: '', phone: '', dob: '', admission_date: '', medium: '', batch_text: '' }
+          const blank = { student_id: '', name: '', phone: '', admission_date: '', medium: '', batch_text: '' }
           blank[field] = processed
           updated.push(blank)
         }
@@ -383,12 +362,11 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
       }
     })
     const parsed = lines.slice(1).filter(row => row.some(c => c)).map(row => {
-      const r = { student_id: '', name: '', phone: '', dob: '', admission_date: '', medium: '', batch_text: '' }
+      const r = { student_id: '', name: '', phone: '', admission_date: '', medium: '', batch_text: '' }
       row.forEach((cell, i) => {
         const field = colMap[i]
         if (!field || !cell) return
-        if (field === 'dob') r.dob = cell.trim()
-        else if (field === 'admission_date') r.admission_date = cell.trim()
+        if (field === 'admission_date') r.admission_date = cell.trim()
         else if (field === 'medium') r.medium = cell.trim()
         else if (field === 'batch') r.batch_text = cell.trim()
         else if (field === 'student_id') r.student_id = cell.trim().toUpperCase()
@@ -408,7 +386,7 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
   }
 
   function addRow() {
-    setRows(prev => [...prev, { student_id: '', name: '', phone: '', dob: '', admission_date: '', medium: '', batch_text: '' }])
+    setRows(prev => [...prev, { student_id: '', name: '', phone: '', admission_date: '', medium: '', batch_text: '' }])
   }
 
   async function handleCreate() {
@@ -428,7 +406,6 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
         student_id: r.student_id?.trim() || null,
         name: r.name.trim(),
         phone: r.phone?.trim() || null,
-        dob: parseDateStr(r.dob) || null,
         admission_date: parseDateStr(r.admission_date) || null,
         medium: parseMediumStr(r.medium) || null,
         batch_id: batchByName[r.batch_text?.toLowerCase().trim()] || null,
@@ -522,7 +499,6 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
                     <th className="px-2 py-2 text-[#f0a500] font-medium text-left w-28">स्टूडेंट ID</th>
                     <th className="px-2 py-2 text-[#9ca3af] font-medium text-left w-36">नाम *</th>
                     <th className="px-2 py-2 text-[#9ca3af] font-medium text-left w-28">फ़ोन</th>
-                    <th className="px-2 py-2 text-[#9ca3af] font-medium text-left w-32">जन्म तिथि</th>
                     <th className="px-2 py-2 text-[#9ca3af] font-medium text-left w-32">प्रवेश तिथि</th>
                     <th className="px-2 py-2 text-[#9ca3af] font-medium text-left w-28">माध्यम</th>
                     <th className="px-2 py-2 text-[#9ca3af] font-medium text-left w-36">बैच</th>
@@ -551,11 +527,6 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
                           <input value={row.phone} onChange={e => updateRow(i, 'phone', e.target.value.replace(/\D/g,'').slice(0,10))}
                             onPaste={e => handleCellPaste(e, i, 'phone')}
                             placeholder="10 digits" className={cellCls} />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input type="text" value={row.dob} onChange={e => updateRow(i, 'dob', e.target.value)}
-                            onPaste={e => handleCellPaste(e, i, 'dob')}
-                            placeholder="DD/MM/YYYY" className={cellCls + ' text-[#9ca3af] placeholder-[#4b5563]'} />
                         </td>
                         <td className="px-1 py-1">
                           <input type="text" value={row.admission_date} onChange={e => updateRow(i, 'admission_date', e.target.value)}
@@ -643,16 +614,11 @@ export default function Students() {
     const { data: existing } = await supabase
       .from('students').select('id, name, student_id').eq('phone', form.phone).maybeSingle()
     if (existing) { toast.error(`Phone already registered to ${existing.name} (${existing.student_id})`); return }
-    if (form.dob) {
-      const { data: dobMatch } = await supabase
-        .from('students').select('id, name, student_id').ilike('name', form.name.trim()).eq('dob', form.dob).maybeSingle()
-      if (dobMatch) { toast.error(`${dobMatch.name} (${dobMatch.student_id}) already registered with same name & DOB`); return }
-    }
     const student_id = await generateStudentId()
     const payload = {
       student_id,
       name: form.name, phone: form.phone,
-      dob: form.dob || null, admission_date: form.admission_date || null,
+      admission_date: form.admission_date || null,
       batch_id: form.batch_id || null,
       medium: form.medium || null, created_by: profile?.id
     }
@@ -674,7 +640,6 @@ export default function Students() {
     const payload = {
       name: cleanForm.name,
       phone: cleanForm.phone || null,
-      dob: cleanForm.dob || null,
       admission_date: cleanForm.admission_date || null,
       batch_id: cleanForm.batch_id || null,
       medium: cleanForm.medium || null,
@@ -728,7 +693,7 @@ export default function Students() {
   }
 
   function handleExportDeactivated() {
-    const headers = ['Student ID', 'Name', 'Phone', 'Batch', 'Medium', 'Admitted', 'DOB']
+    const headers = ['Student ID', 'Name', 'Phone', 'Batch', 'Medium', 'Admitted']
     const csv = [
       headers.join(','),
       ...filtered.map(s => [
@@ -738,7 +703,6 @@ export default function Students() {
         `"${s.batches?.name || ''}"`,
         s.medium || '',
         s.admission_date ? format(new Date(s.admission_date), 'dd MMM yyyy') : '',
-        s.dob ? format(new Date(s.dob), 'dd MMM yyyy') : '',
       ].join(','))
     ].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })

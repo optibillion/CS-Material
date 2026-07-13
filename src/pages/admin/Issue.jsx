@@ -40,12 +40,11 @@ function SelectMediumModal({ open, student, onSave }) {
 }
 
 function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
-  const [form, setForm] = useState({ name: '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' })
+  const [form, setForm] = useState({ name: '', phone: '', admission_date: '', batch_id: '', medium: '' })
   const [errors, setErrors] = useState({})
   const today = new Date().toISOString().split('T')[0]
-  const dobMax = new Date(new Date().setFullYear(new Date().getFullYear() - 15)).toISOString().split('T')[0]
   useEffect(() => {
-    if (open) { setForm({ name: prefillName || '', phone: '', dob: '', admission_date: '', batch_id: '', medium: '' }); setErrors({}) }
+    if (open) { setForm({ name: prefillName || '', phone: '', admission_date: '', batch_id: '', medium: '' }); setErrors({}) }
   }, [open, prefillName])
   function set(k, v) { setForm(f => ({ ...f, [k]: v })) }
   async function handleSave() {
@@ -53,8 +52,6 @@ function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
     if (!form.name.trim()) errs.name = 'Name is required'
     if (!form.phone) errs.phone = 'Phone is required'
     else if (!/^\d{10}$/.test(form.phone)) errs.phone = 'Must be exactly 10 digits'
-    if (!form.dob) errs.dob = 'Date of birth is required'
-    else if (form.dob < '1960-01-01' || form.dob > dobMax) errs.dob = 'Enter a valid date of birth (age 15–65)'
     if (form.admission_date && (form.admission_date < '2010-01-01' || form.admission_date > today))
       errs.admission_date = 'Must be between 2010 and today'
     if (!form.medium) errs.medium = 'Medium is required'
@@ -74,20 +71,11 @@ function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
               className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none placeholder-[#4b5563] ${errors.name ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
             {errors.name && <p className="text-red-400 text-xs mt-1">{errors.name}</p>}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone * (10 digits)</label>
-              <input value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.phone ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
-              {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
-            </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Date of Birth *</label>
-              <input type="date" value={form.dob} onChange={e => set('dob', e.target.value)}
-                min="1960-01-01" max={dobMax}
-                className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.dob ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
-              {errors.dob && <p className="text-red-400 text-xs mt-1">{errors.dob}</p>}
-            </div>
+          <div>
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone * (10 digits)</label>
+            <input value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+              className={`w-full bg-[#12121f] border rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none ${errors.phone ? 'border-red-500' : 'border-[#2a2a45] focus:border-[#bd0a0a]'}`} />
+            {errors.phone && <p className="text-red-400 text-xs mt-1">{errors.phone}</p>}
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Admission Date</label>
@@ -220,19 +208,10 @@ export default function AdminIssue() {
       toast.error(`Phone already registered to ${existing.name} (${existing.student_id})`)
       return
     }
-    if (form.dob) {
-      const { data: dobMatch } = await supabase
-        .from('students').select('id, name, student_id').ilike('name', form.name.trim()).eq('dob', form.dob).maybeSingle()
-      if (dobMatch) {
-        toast.error(`${dobMatch.name} (${dobMatch.student_id}) already registered with same name & date of birth`)
-        return
-      }
-    }
     const student_id = await generateStudentId()
     const payload = {
       student_id,
       name: form.name, phone: form.phone,
-      dob: form.dob || null,
       admission_date: form.admission_date || null,
       batch_id: form.batch_id || null,
       medium: form.medium || null,

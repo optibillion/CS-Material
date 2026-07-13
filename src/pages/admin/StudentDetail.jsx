@@ -20,7 +20,6 @@ function EditModal({ open, onClose, onSave, student, batches, isAdmin, allUsers 
       setForm({
         name: student.name || '',
         phone: student.phone || '',
-        dob: student.dob || '',
         admission_date: student.admission_date || '',
         batch_id: student.batch_id || '',
         medium: student.medium || '',
@@ -89,17 +88,10 @@ function EditModal({ open, onClose, onSave, student, batches, isAdmin, allUsers 
             <input value={form.name} onChange={e => set('name', e.target.value)}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone</label>
-              <input value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-            </div>
-            <div>
-              <label className="text-[#9ca3af] text-sm mb-1.5 block">Date of Birth</label>
-              <input type="date" value={form.dob} onChange={e => set('dob', e.target.value)}
-                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-            </div>
+          <div>
+            <label className="text-[#9ca3af] text-sm mb-1.5 block">Phone</label>
+            <input value={form.phone} onChange={e => set('phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
           </div>
           <div>
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Admission Date</label>
@@ -200,7 +192,6 @@ export default function StudentDetail() {
     const payload = {
       name: cleanForm.name,
       phone: cleanForm.phone || null,
-      dob: cleanForm.dob || null,
       admission_date: cleanForm.admission_date || null,
       batch_id: cleanForm.batch_id || null,
       medium: cleanForm.medium || null,
