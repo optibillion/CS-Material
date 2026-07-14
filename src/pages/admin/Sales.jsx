@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase, adjustStock } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Search, RotateCcw, ShoppingCart, Check, Plus, Package, Receipt } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -53,6 +53,9 @@ export default function Sales() {
       .update({ is_returned: true, return_handled_by: profile?.id, returned_at: new Date().toISOString() })
       .in('id', txn.ids)
     if (error) { toast.error('Failed'); return }
+    // Restore stock for each book that wasn't already returned
+    const toRestore = txn.books.filter(b => !b.is_returned)
+    await Promise.all(toRestore.map(b => adjustStock(b.book_id, b.qty || 1)))
     toast.success('Sale marked as returned')
     logAction('SALE_RETURNED', `${txn.books.map(b => b.title).join(', ')} — ${txn.buyer_name} (${txn.buyer_phone || 'no phone'})`)
     fetchSales()
@@ -170,7 +173,7 @@ export default function Sales() {
       }
       const g = groups[key]
       if (s.total_price) g.total_price = s.total_price
-      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
+      g.books.push({ book_id: s.book_id, title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
       g.ids.push(s.id)
       if (!s.is_returned) g.all_returned = false
     }

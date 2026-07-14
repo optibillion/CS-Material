@@ -350,6 +350,7 @@ function CorrectModal({ open, onClose, onSave, editing, allBooks }) {
 
 function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
   const [movements, setMovements] = useState([])
+  const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -369,6 +370,12 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
         .select('id, added_at, qty, note, users(name)')
         .eq('book_id', bookId).order('added_at', { ascending: false }),
     ]).then(([{ data: iss }, { data: sal }, { data: all }, { data: additions }]) => {
+      setStats({
+        issued:     (iss||[]).filter(i => !i.is_previous_issuance && !i.is_reversed).length,
+        prevIssued: (iss||[]).filter(i => i.is_previous_issuance).length,
+        sold:       (sal||[]).filter(s => !s.is_returned).reduce((s, r) => s + (r.qty||1), 0),
+        allotted:   (all||[]).reduce((s, r) => s + (r.qty||1), 0),
+      })
       const merged = [
         ...(iss||[]).map(i => ({
           key: `i-${i.id}`, type: i.is_previous_issuance ? 'PREV_ISSUANCE' : 'ISSUANCE',
@@ -400,6 +407,8 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-0 sm:px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-xl w-full sm:max-w-lg max-h-[80vh] flex flex-col">
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a45] flex-shrink-0">
           <div>
             <p className="text-white font-semibold text-sm">{bookTitle}</p>
@@ -407,6 +416,25 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
           </div>
           <button onClick={onClose} className="text-[#6b7280] hover:text-white"><X size={18} /></button>
         </div>
+
+        {/* Totals strip */}
+        {!loading && stats && (
+          <div className="grid grid-cols-4 divide-x divide-[#2a2a45] border-b border-[#2a2a45] flex-shrink-0">
+            {[
+              { label: 'Issuances', value: stats.issued,     cls: 'text-red-400' },
+              { label: 'Prev. Issue', value: stats.prevIssued, cls: 'text-[#f0a500]' },
+              { label: 'Sales',     value: stats.sold,       cls: 'text-violet-400' },
+              { label: 'Allotted',  value: stats.allotted,   cls: 'text-orange-400' },
+            ].map(item => (
+              <div key={item.label} className="py-3 text-center">
+                <p className={`text-base font-bold ${item.cls}`}>{item.value}</p>
+                <p className="text-[#6b7280] text-[10px] mt-0.5">{item.label}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Movement history */}
         <div className="overflow-y-auto flex-1 divide-y divide-[#2a2a45]">
           {loading ? [...Array(5)].map((_,i) => (
             <div key={i} className="px-5 py-3 animate-pulse">
