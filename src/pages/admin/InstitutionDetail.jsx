@@ -186,7 +186,7 @@ export default function InstitutionDetail() {
       supabase.from('institutions').select('*').eq('id', id).single(),
       supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium, mrp), users(name)').eq('institution_id', id).order('allotted_at', { ascending: false }),
       supabase.from('books').select('*').eq('is_active', true).order('exam_level').order('unit').order('part'),
-      supabase.from('stock').select('id, book_id, available_qty'),
+      supabase.from('stock').select('id, book_id, available_qty').order('id', { ascending: false }),
     ])
     if (!inst) { toast.error('Distributor not found'); navigate(`${basePath}/allotments`); return }
     if (bksErr) toast.error('Could not load books — check Supabase RLS for accountant role')
@@ -197,9 +197,11 @@ export default function InstitutionDetail() {
     setLoading(false)
   }
 
-  // stock map: bookId → total available
+  // stock map: bookId → available qty (most recent entry only, matching inventory display)
   const stockMap = {}
-  for (const e of stockEntries) stockMap[e.book_id] = (stockMap[e.book_id] || 0) + (e.available_qty || 0)
+  for (const e of stockEntries) {
+    if (!(e.book_id in stockMap)) stockMap[e.book_id] = e.available_qty || 0
+  }
 
   // per-book totals
   const bookTotals = {}
