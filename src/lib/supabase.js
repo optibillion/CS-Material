@@ -43,6 +43,8 @@ export async function adjustStock(bookId, delta) {
     .from('stock')
     .select('id, available_qty')
     .eq('book_id', bookId)
+    .order('id', { ascending: false })
+    .limit(1)
     .maybeSingle()
   if (!data) return
   await supabase.from('stock').update({ available_qty: Math.max(0, data.available_qty + delta) }).eq('id', data.id)
