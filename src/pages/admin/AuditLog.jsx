@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { format } from 'date-fns'
 import { Search } from 'lucide-react'
@@ -57,9 +58,10 @@ const ACTION_COLORS = {
 }
 
 export default function AuditLog() {
+  const [searchParams] = useSearchParams()
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(() => searchParams.get('q') || '')
 
   // Backfill state
   const [backfillLoading, setBackfillLoading] = useState(false)
@@ -172,10 +174,13 @@ export default function AuditLog() {
     fetchLogs()
   }
 
+  const q = search.toLowerCase()
   const filtered = logs.filter(l =>
-    l.action?.toLowerCase().includes(search.toLowerCase()) ||
-    l.entity_type?.toLowerCase().includes(search.toLowerCase()) ||
-    l.users?.name?.toLowerCase().includes(search.toLowerCase())
+    !q ||
+    l.action?.toLowerCase().includes(q) ||
+    l.entity_type?.toLowerCase().includes(q) ||
+    l.users?.name?.toLowerCase().includes(q) ||
+    l.details?.toLowerCase().includes(q)
   )
 
   return (

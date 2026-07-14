@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
-import { Plus, Search, AlertTriangle, History, Package, X, BookOpen } from 'lucide-react'
+import { Plus, Search, AlertTriangle, History, Package, X, BookOpen, ChevronRight, ChevronLeft } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 import { format } from 'date-fns'
@@ -348,13 +349,27 @@ function CorrectModal({ open, onClose, onSave, editing, allBooks }) {
   )
 }
 
+const DRILL_META = {
+  ISSUANCE:      { label: 'Issuances',      cls: 'text-red-400',    badge: 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' },
+  PREV_ISSUANCE: { label: 'Prev. Issuances', cls: 'text-[#f0a500]', badge: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' },
+  SALE:          { label: 'Sales',          cls: 'text-violet-400', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+  ALLOTMENT:     { label: 'Allotments',     cls: 'text-orange-400', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+}
+
+function extractAuditName(to) {
+  return to.split(' · ')[0].split(' (')[0].trim()
+}
+
 function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
+  const navigate = useNavigate()
   const [movements, setMovements] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
+  const [drillCat, setDrillCat] = useState(null)
 
   useEffect(() => {
     if (!open || !bookId) return
+    setDrillCat(null)
     setLoading(true)
     Promise.all([
       supabase.from('issuances')
@@ -379,21 +394,25 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
       const merged = [
         ...(iss||[]).map(i => ({
           key: `i-${i.id}`, type: i.is_previous_issuance ? 'PREV_ISSUANCE' : 'ISSUANCE',
+          name: i.students?.name || '—',
           to: `${i.students?.name||'—'} (${i.students?.student_id||''})`,
           qty: 1, by: i.users?.name||'—', date: i.issued_at, voided: i.is_reversed
         })),
         ...(sal||[]).map(s => ({
           key: `s-${s.id}`, type: 'SALE',
+          name: s.buyer_name || '—',
           to: s.buyer_name + (s.buyer_phone ? ` · ${s.buyer_phone}` : ''),
           qty: s.qty||1, by: s.users?.name||'—', date: s.sold_at, voided: s.is_returned
         })),
         ...(all||[]).map(a => ({
           key: `a-${a.id}`, type: 'ALLOTMENT',
+          name: a.institution_name || '—',
           to: a.institution_name + (a.contact_person ? ` · ${a.contact_person}` : '') + ` (${a.type})`,
           qty: a.qty||1, by: a.users?.name||'—', date: a.allotted_at, voided: false
         })),
         ...(additions||[]).map(a => ({
           key: `sa-${a.id}`, type: 'STOCK_IN',
+          name: '',
           to: `+${a.qty} copies received${a.note ? ` — ${a.note}` : ''}`,
           qty: a.qty, by: a.users?.name||'—', date: a.added_at, voided: false
         })),
@@ -403,6 +422,13 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
     })
   }, [open, bookId])
 
+  function goToAudit(m) {
+    onClose()
+    navigate(`/admin/audit?q=${encodeURIComponent(m.name || extractAuditName(m.to))}`)
+  }
+
+  const drillItems = drillCat ? movements.filter(m => m.type === drillCat) : []
+
   if (!open) return null
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-0 sm:px-4">
@@ -410,58 +436,98 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#2a2a45] flex-shrink-0">
-          <div>
-            <p className="text-white font-semibold text-sm">{bookTitle}</p>
-            <p className="text-[#6b7280] text-xs mt-0.5">{loading ? '…' : `${movements.length} total movements`}</p>
+          <div className="flex items-center gap-2 min-w-0">
+            {drillCat && (
+              <button onClick={() => setDrillCat(null)} className="text-[#6b7280] hover:text-white flex-shrink-0">
+                <ChevronLeft size={18} />
+              </button>
+            )}
+            <div className="min-w-0">
+              <p className="text-white font-semibold text-sm truncate">
+                {drillCat ? DRILL_META[drillCat].label : bookTitle}
+              </p>
+              <p className="text-[#6b7280] text-xs mt-0.5">
+                {loading ? '…' : drillCat ? `${drillItems.length} records` : `${movements.length} total movements`}
+              </p>
+            </div>
           </div>
-          <button onClick={onClose} className="text-[#6b7280] hover:text-white"><X size={18} /></button>
+          <button onClick={onClose} className="text-[#6b7280] hover:text-white flex-shrink-0"><X size={18} /></button>
         </div>
 
-        {/* Totals strip */}
-        {!loading && stats && (
-          <div className="grid grid-cols-4 divide-x divide-[#2a2a45] border-b border-[#2a2a45] flex-shrink-0">
-            {[
-              { label: 'Issuances', value: stats.issued,     cls: 'text-red-400' },
-              { label: 'Prev. Issue', value: stats.prevIssued, cls: 'text-[#f0a500]' },
-              { label: 'Sales',     value: stats.sold,       cls: 'text-violet-400' },
-              { label: 'Allotted',  value: stats.allotted,   cls: 'text-orange-400' },
-            ].map(item => (
-              <div key={item.label} className="py-3 text-center">
-                <p className={`text-base font-bold ${item.cls}`}>{item.value}</p>
-                <p className="text-[#6b7280] text-[10px] mt-0.5">{item.label}</p>
+        {/* Main view: totals strip + full history */}
+        {!drillCat && (<>
+          {!loading && stats && (
+            <div className="grid grid-cols-4 divide-x divide-[#2a2a45] border-b border-[#2a2a45] flex-shrink-0">
+              {[
+                { cat: 'ISSUANCE',      label: 'Issuances',   value: stats.issued,     cls: 'text-red-400' },
+                { cat: 'PREV_ISSUANCE', label: 'Prev. Issue', value: stats.prevIssued, cls: 'text-[#f0a500]' },
+                { cat: 'SALE',          label: 'Sales',        value: stats.sold,       cls: 'text-violet-400' },
+                { cat: 'ALLOTMENT',     label: 'Allotted',     value: stats.allotted,   cls: 'text-orange-400' },
+              ].map(item => (
+                <button key={item.cat} onClick={() => setDrillCat(item.cat)}
+                  className="py-3 text-center hover:bg-[#12121f] transition-colors group">
+                  <p className={`text-base font-bold ${item.cls}`}>{item.value}</p>
+                  <p className="text-[#6b7280] text-[10px] mt-0.5 flex items-center justify-center gap-0.5">
+                    {item.label}<ChevronRight size={9} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="overflow-y-auto flex-1 divide-y divide-[#2a2a45]">
+            {loading ? [...Array(5)].map((_,i) => (
+              <div key={i} className="px-5 py-3 animate-pulse">
+                <div className="h-4 bg-[#2a2a45] rounded w-3/4 mb-2"/>
+                <div className="h-3 bg-[#2a2a45] rounded w-1/2"/>
+              </div>
+            )) : movements.length === 0 ? (
+              <p className="text-[#6b7280] text-sm text-center py-10">No movements recorded for this book</p>
+            ) : movements.map(m => {
+              const ts = TYPE_STYLES[m.type]
+              return (
+                <div key={m.key} className={`px-5 py-3 ${m.voided ? 'opacity-40' : ''}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.cls}`}>{ts.label}</span>
+                        {m.voided && <span className="text-[#6b7280] text-xs">reversed/returned</span>}
+                      </div>
+                      <p className="text-white text-sm truncate">{m.type === 'STOCK_IN' ? m.to : `→ ${m.to}`}</p>
+                      <p className="text-[#6b7280] text-xs mt-0.5">{m.type !== 'STOCK_IN' ? `qty ${m.qty} · ` : ''}by {m.by}</p>
+                    </div>
+                    <p className="text-[#6b7280] text-xs whitespace-nowrap flex-shrink-0">{format(new Date(m.date), 'dd MMM yy, hh:mm a')}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>)}
+
+        {/* Drill-down view */}
+        {drillCat && (
+          <div className="overflow-y-auto flex-1 divide-y divide-[#2a2a45]">
+            {drillItems.length === 0 ? (
+              <p className="text-[#6b7280] text-sm text-center py-10">No records</p>
+            ) : drillItems.map(m => (
+              <div key={m.key} className={`px-5 py-3 flex items-center gap-3 ${m.voided ? 'opacity-40' : ''}`}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${DRILL_META[drillCat].badge}`}>×{m.qty}</span>
+                    {m.voided && <span className="text-[#6b7280] text-xs">reversed/returned</span>}
+                  </div>
+                  <p className="text-white text-sm font-medium truncate">{m.to}</p>
+                  <p className="text-[#6b7280] text-xs mt-0.5">
+                    {format(new Date(m.date), 'dd MMM yy, hh:mm a')} · by {m.by}
+                  </p>
+                </div>
+                <button onClick={() => goToAudit(m)}
+                  className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all flex-shrink-0">
+                  Audit <ChevronRight size={11} />
+                </button>
               </div>
             ))}
           </div>
         )}
-
-        {/* Movement history */}
-        <div className="overflow-y-auto flex-1 divide-y divide-[#2a2a45]">
-          {loading ? [...Array(5)].map((_,i) => (
-            <div key={i} className="px-5 py-3 animate-pulse">
-              <div className="h-4 bg-[#2a2a45] rounded w-3/4 mb-2"/>
-              <div className="h-3 bg-[#2a2a45] rounded w-1/2"/>
-            </div>
-          )) : movements.length === 0 ? (
-            <p className="text-[#6b7280] text-sm text-center py-10">No movements recorded for this book</p>
-          ) : movements.map(m => {
-            const ts = TYPE_STYLES[m.type]
-            return (
-              <div key={m.key} className={`px-5 py-3 ${m.voided ? 'opacity-40' : ''}`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.cls}`}>{ts.label}</span>
-                      {m.voided && <span className="text-[#6b7280] text-xs">reversed/returned</span>}
-                    </div>
-                    <p className="text-white text-sm truncate">{m.type === 'STOCK_IN' ? m.to : `→ ${m.to}`}</p>
-                    <p className="text-[#6b7280] text-xs mt-0.5">{m.type !== 'STOCK_IN' ? `qty ${m.qty} · ` : ''}by {m.by}</p>
-                  </div>
-                  <p className="text-[#6b7280] text-xs whitespace-nowrap flex-shrink-0">{format(new Date(m.date), 'dd MMM yy, hh:mm a')}</p>
-                </div>
-              </div>
-            )
-          })}
-        </div>
       </div>
     </div>
   )
@@ -486,6 +552,9 @@ export default function Inventory() {
   const [loading, setLoading] = useState(true)
   const [histLoading, setHistLoading] = useState(false)
   const [search, setSearch] = useState('')
+  const [filterExam, setFilterExam] = useState('')
+  const [filterMedium, setFilterMedium] = useState('')
+  const [filterUnit, setFilterUnit] = useState('')
   const [histSearch, setHistSearch] = useState('')
   const [addBatchOpen, setAddBatchOpen] = useState(false)
   const [preBook, setPreBook] = useState(null)
@@ -621,11 +690,17 @@ export default function Inventory() {
     fetchAll()
   }
 
+  const examOptions = [...new Set(stock.map(s => s.books?.exam_level).filter(Boolean))].sort()
+  const unitOptions = [...new Set(stock.filter(s => !filterExam || s.books?.exam_level === filterExam).map(s => s.books?.unit).filter(Boolean))].sort()
+
   const filtered = stock.filter(s => {
-    const q = search.toLowerCase()
-    if (!q) return true
     const b = s.books
-    return [b?.title, b?.exam_level, b?.unit, b?.part, b?.medium, b?.category].some(f => f?.toLowerCase().includes(q))
+    const q = search.toLowerCase()
+    if (q && ![b?.title, b?.exam_level, b?.unit, b?.part, b?.medium, b?.category].some(f => f?.toLowerCase().includes(q))) return false
+    if (filterExam && b?.exam_level !== filterExam) return false
+    if (filterMedium && b?.medium !== filterMedium) return false
+    if (filterUnit && b?.unit !== filterUnit) return false
+    return true
   })
 
   const q = histSearch.toLowerCase()
@@ -668,6 +743,45 @@ export default function Inventory() {
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by book..."
               className="w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-lg pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+          </div>
+
+          {/* Filter chips */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[#6b7280] text-xs w-10 flex-shrink-0">Exam</span>
+              {examOptions.map(e => (
+                <button key={e} onClick={() => { setFilterExam(f => f===e ? '' : e); setFilterUnit('') }}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterExam===e ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                  {e}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[#6b7280] text-xs w-10 flex-shrink-0">Medium</span>
+              {[['hindi','Hindi',MEDIUM_COLORS.hindi],['english','English',MEDIUM_COLORS.english],['both','Both',MEDIUM_COLORS.both]].map(([val,lbl,cls]) => (
+                <button key={val} onClick={() => setFilterMedium(f => f===val ? '' : val)}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterMedium===val ? cls : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            {unitOptions.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[#6b7280] text-xs w-10 flex-shrink-0">Paper</span>
+                {unitOptions.map(u => (
+                  <button key={u} onClick={() => setFilterUnit(f => f===u ? '' : u)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterUnit===u ? 'bg-[#2a2a45] text-white border-[#4a4a65]' : 'border-[#2a2a45] text-[#6b7280] hover:text-white'}`}>
+                    {u}
+                  </button>
+                ))}
+              </div>
+            )}
+            {(filterExam || filterMedium || filterUnit) && (
+              <button onClick={() => { setFilterExam(''); setFilterMedium(''); setFilterUnit('') }}
+                className="text-xs text-[#6b7280] hover:text-red-400 transition-colors">
+                Clear filters
+              </button>
+            )}
           </div>
 
           {/* Desktop table */}
