@@ -165,12 +165,15 @@ export default function InstitutionDetail() {
   const [issueOpen, setIssueOpen] = useState(false)
   const [slipModal, setSlipModal] = useState(null)
 
+  const today = new Date().toISOString().slice(0, 10)
+
   // Issue panel state
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
   const [qtyMap, setQtyMap] = useState({}) // { bookId: qty string }
   const [deductStock, setDeductStock] = useState(false)
   const [discountPct, setDiscountPct] = useState(0)
+  const [issueDate, setIssueDate] = useState(today)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => { fetchAll() }, [id])
@@ -273,12 +276,12 @@ export default function InstitutionDetail() {
   )
   const selectedBooks = books.filter(b => parseInt(qtyMap[b.id] || 0) > 0)
 
-  function openIssue() { setQtyMap({}); setDeductStock(true); setDiscountPct(0); setExamFilter('all'); setUnitFilter('all'); setIssueOpen(true) }
+  function openIssue() { setQtyMap({}); setDeductStock(true); setDiscountPct(0); setExamFilter('all'); setUnitFilter('all'); setIssueDate(today); setIssueOpen(true) }
 
   async function handleIssue() {
     if (selectedBooks.length === 0) { toast.error('Select at least one book with quantity'); return }
     setSubmitting(true)
-    const issuedAt = new Date().toISOString()
+    const issuedAt = new Date(issueDate + 'T12:00:00').toISOString()
     const rows = selectedBooks.map(b => ({
       institution_id: id,
       book_id: b.id,
@@ -490,6 +493,16 @@ export default function InstitutionDetail() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {/* Date picker */}
+              <div>
+                <label className="text-[#9ca3af] text-xs mb-1 block">Allotment Date</label>
+                <input type="date" value={issueDate} max={today} onChange={e => setIssueDate(e.target.value)}
+                  className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+                {issueDate !== today && (
+                  <p className="text-yellow-400 text-xs mt-1">Backdated — slip will show {format(new Date(issueDate + 'T12:00:00'), 'dd MMM yyyy')}</p>
+                )}
+              </div>
+
               {/* Exam filter */}
               {examOptions.length > 0 && (
                 <div className="space-y-2">
