@@ -539,14 +539,17 @@ export default function InstitutionDetail() {
                   return (
                     <div key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${qty > 0 ? 'bg-[#bd0a0a]/10 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
                       <div className="flex-1 min-w-0">
-                        {lvl ? (
-                          <>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {b.medium === 'hindi' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30 font-semibold flex-shrink-0">Hindi</span>}
+                          {b.medium === 'english' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-500/20 text-blue-400 border-blue-500/30 font-semibold flex-shrink-0">English</span>}
+                          {b.medium === 'both' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 font-semibold flex-shrink-0">Both</span>}
+                          {lvl ? (
                             <p className="text-white text-sm font-semibold">{lvl}</p>
-                            <p className="text-[#6b7280] text-xs truncate">{b.title}</p>
-                          </>
-                        ) : (
-                          <p className="text-white text-sm">{b.title}</p>
-                        )}
+                          ) : (
+                            <p className="text-white text-sm">{b.title}</p>
+                          )}
+                        </div>
+                        {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{b.title}</p>}
                         {avail !== null && (
                           <p className={`text-xs mt-0.5 ${avail === 0 ? 'text-red-400' : avail <= 10 ? 'text-orange-400' : 'text-emerald-400'}`}>
                             {avail === 0 ? 'Out of stock' : `${avail} in stock`}
