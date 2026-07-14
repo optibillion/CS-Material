@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useRealtime } from '../../hooks/useRealtime'
 import { useAuthStore } from '../../store/authStore'
 import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -177,6 +178,7 @@ export default function InstitutionDetail() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => { fetchAll() }, [id])
+  useRealtime('stock', fetchAll)
 
   async function fetchAll() {
     setLoading(true)
