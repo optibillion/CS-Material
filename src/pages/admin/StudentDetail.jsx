@@ -337,7 +337,7 @@ export default function StudentDetail() {
               <ShoppingBag size={11} /> {student.bag_issued ? 'Bag issued' : 'No bag'}
             </span>
             {!student.bag_issued ? (
-              <button onClick={handleIssueBag}
+              <button onClick={() => { if (window.confirm(`Issue bag to ${student.name}?`)) handleIssueBag() }}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all">
                 <ShoppingBag size={13} /> Issue Bag
               </button>
