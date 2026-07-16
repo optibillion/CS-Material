@@ -220,6 +220,7 @@ export default function Issue() {
   }
 
   function toggleBook(bookId) {
+    if (!selectedStudent?.medium) { toast.error('Set student medium before issuing books'); return }
     if (studentIssuances.includes(bookId)) { toast.error('Already issued to this student'); return }
     if (issuanceMode === 'regular') {
       if (selectedPreviousBooks.includes(bookId)) { toast.error('Already selected as Previous Issue — remove it there first'); return }
@@ -231,10 +232,9 @@ export default function Issue() {
   }
 
   function selectBundle(bundle) {
+    if (!selectedStudent?.medium) { toast.error('Set student medium before issuing books'); return }
     const allIds = bundle.bundle_books.map(b => b.book_id)
-    const mediumIds = selectedStudent?.medium
-      ? allIds.filter(id => { const m = books.find(b => b.id === id)?.medium; return m === selectedStudent.medium || m === 'both' })
-      : allIds
+    const mediumIds = allIds.filter(id => { const m = books.find(b => b.id === id)?.medium; return m === selectedStudent.medium || m === 'both' })
     const blocked = issuanceMode === 'regular'
       ? [...studentIssuances, ...selectedPreviousBooks]
       : [...studentIssuances, ...selectedRegularBooks]
@@ -251,6 +251,7 @@ export default function Issue() {
     if (!selectedStudent || (selectedRegularBooks.length === 0 && selectedPreviousBooks.length === 0)) {
       toast.error('Select at least one book'); return
     }
+    if (!selectedStudent.medium) { toast.error('Set student medium before issuing books'); return }
     setLoading(true)
     const { data: freshIssuances } = await supabase.from('issuances')
       .select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)

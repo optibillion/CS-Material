@@ -226,6 +226,7 @@ export default function AdminIssue() {
   }
 
   function toggleBook(bookId) {
+    if (!selectedStudent?.medium) { toast.error('Set student medium before issuing books'); return }
     if (studentIssuances.includes(bookId)) { toast.error('Already issued to this student'); return }
     if (issuanceMode === 'regular') {
       if (selectedPreviousBooks.includes(bookId)) { toast.error('Already selected as Previous Issue — remove it there first'); return }
@@ -237,10 +238,9 @@ export default function AdminIssue() {
   }
 
   function selectBundle(bundle) {
+    if (!selectedStudent?.medium) { toast.error('Set student medium before issuing books'); return }
     const allIds = bundle.bundle_books.map(b => b.book_id)
-    const mediumIds = selectedStudent?.medium
-      ? allIds.filter(id => { const m = books.find(b => b.id === id)?.medium; return m === selectedStudent.medium || m === 'both' })
-      : allIds
+    const mediumIds = allIds.filter(id => { const m = books.find(b => b.id === id)?.medium; return m === selectedStudent.medium || m === 'both' })
     const blocked = issuanceMode === 'regular'
       ? [...studentIssuances, ...selectedPreviousBooks]
       : [...studentIssuances, ...selectedRegularBooks]
@@ -254,40 +254,54 @@ export default function AdminIssue() {
   }
 
   async function handleCombinedIssue() {
-    if (!selectedStudent || (selectedRegularBooks.length === 0 && selectedPreviousBooks.length === 0)) {
-      toast.error('Select at least one book'); return
+    const wantsBag = issueBag && !selectedStudent?.bag_issued
+    if (!selectedStudent || (selectedRegularBooks.length === 0 && selectedPreviousBooks.length === 0 && !wantsBag)) {
+      toast.error('Select at least one book or issue a bag'); return
+    }
+    if (selectedRegularBooks.length > 0 || selectedPreviousBooks.length > 0) {
+      if (!selectedStudent.medium) { toast.error('Set student medium before issuing books'); return }
     }
     setLoading(true)
-    const { data: freshIssuances } = await supabase.from('issuances')
-      .select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
-    const alreadyIssuedIds = freshIssuances?.map(i => i.book_id) || []
-    const regularToIssue = [...new Set(selectedRegularBooks)].filter(id => !alreadyIssuedIds.includes(id))
-    const previousToIssue = [...new Set(selectedPreviousBooks)].filter(id => !alreadyIssuedIds.includes(id))
-    if (regularToIssue.length === 0 && previousToIssue.length === 0) {
-      toast.error('All selected books are already issued to this student')
-      setStudentIssuances(alreadyIssuedIds)
-      setSelectedRegularBooks([]); setSelectedPreviousBooks([])
-      setLoading(false); return
-    }
     const now = new Date().toISOString()
-    const rows = [
-      ...regularToIssue.map(book_id => ({ student_id: selectedStudent.id, book_id, issued_by: profile?.id, issued_at: now, is_reversed: false, is_previous_issuance: false })),
-      ...previousToIssue.map(book_id => ({ student_id: selectedStudent.id, book_id, issued_by: profile?.id, issued_at: now, is_reversed: false, is_previous_issuance: true })),
-    ]
-    const { error } = await supabase.from('issuances').insert(rows)
-    if (error) { toast.error('Failed to record issuances'); setLoading(false); return }
-    await Promise.all(regularToIssue.map(bookId => adjustStock(bookId, -1)))
-    const bagWasNotIssued = issueBag && !selectedStudent.bag_issued
-    if (bagWasNotIssued) {
-      const { error: bagErr } = await supabase.from('students').update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }).eq('id', selectedStudent.id)
-      if (bagErr && bagErr.code === '42703') toast.error('Run migration: add_bag_tracking.sql')
-      else if (!bagErr) {
-        setSelectedStudent(prev => ({ ...prev, bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }))
-        logAction('BAG_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id})`)
+    let regularToIssue = []
+    let previousToIssue = []
+    if (selectedRegularBooks.length > 0 || selectedPreviousBooks.length > 0) {
+      const { data: freshIssuances } = await supabase.from('issuances')
+        .select('book_id').eq('student_id', selectedStudent.id).eq('is_reversed', false)
+      const alreadyIssuedIds = freshIssuances?.map(i => i.book_id) || []
+      regularToIssue = [...new Set(selectedRegularBooks)].filter(id => !alreadyIssuedIds.includes(id))
+      previousToIssue = [...new Set(selectedPreviousBooks)].filter(id => !alreadyIssuedIds.includes(id))
+      if (regularToIssue.length === 0 && previousToIssue.length === 0 && !wantsBag) {
+        toast.error('All selected books are already issued to this student')
+        setStudentIssuances(alreadyIssuedIds)
+        setSelectedRegularBooks([]); setSelectedPreviousBooks([])
+        setLoading(false); return
+      }
+      if (regularToIssue.length > 0 || previousToIssue.length > 0) {
+        const rows = [
+          ...regularToIssue.map(book_id => ({ student_id: selectedStudent.id, book_id, issued_by: profile?.id, issued_at: now, is_reversed: false, is_previous_issuance: false })),
+          ...previousToIssue.map(book_id => ({ student_id: selectedStudent.id, book_id, issued_by: profile?.id, issued_at: now, is_reversed: false, is_previous_issuance: true })),
+        ]
+        const { error } = await supabase.from('issuances').insert(rows)
+        if (error) { toast.error('Failed to record issuances'); setLoading(false); return }
+        await Promise.all(regularToIssue.map(bookId => adjustStock(bookId, -1)))
       }
     }
+    if (wantsBag) {
+      const { error: bagErr } = await supabase.from('students').update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }).eq('id', selectedStudent.id)
+      if (bagErr) {
+        if (bagErr.code === '42703') toast.error('Run migration: add_bag_tracking.sql')
+        else toast.error('Failed to issue bag')
+        setLoading(false); return
+      }
+      setSelectedStudent(prev => ({ ...prev, bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }))
+      logAction('BAG_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id})`)
+    }
     const total = regularToIssue.length + previousToIssue.length
-    toast.success(`✓ ${total} book(s) recorded for ${selectedStudent.name}${bagWasNotIssued ? ' + bag' : ''}`)
+    const parts = []
+    if (total > 0) parts.push(`${total} book(s)`)
+    if (wantsBag) parts.push('bag')
+    toast.success(`✓ ${parts.join(' + ')} recorded for ${selectedStudent.name}`)
     if (regularToIssue.length > 0)
       logAction('BOOKS_ISSUED', `${selectedStudent.name} (${selectedStudent.student_id}) — ${regularToIssue.length} book(s): ${regularToIssue.map(id => { const b = books.find(b => b.id === id); if (!b) return null; const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › '); return lvl ? `${b.title} (${lvl})` : b.title }).filter(Boolean).join(', ')}`)
     if (previousToIssue.length > 0)
