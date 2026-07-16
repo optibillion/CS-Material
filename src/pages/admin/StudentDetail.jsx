@@ -158,6 +158,36 @@ function ReversalModal({ open, onClose, onConfirm, issuance }) {
   )
 }
 
+function BagConfirmModal({ open, onClose, onConfirm, studentName, action }) {
+  if (!open) return null
+  const isIssue = action === 'issue'
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isIssue ? 'bg-[#f0a500]/15' : 'bg-red-500/15'}`}>
+            <ShoppingBag size={18} className={isIssue ? 'text-[#f0a500]' : 'text-red-400'} />
+          </div>
+          <div>
+            <h2 className="text-white font-semibold">{isIssue ? 'Issue Bag' : 'Revoke Bag'}</h2>
+            <p className="text-[#6b7280] text-xs">{studentName}</p>
+          </div>
+        </div>
+        <p className="text-[#9ca3af] text-sm mb-5">
+          {isIssue ? `Confirm issuing a Champion Square bag to ${studentName}?` : `Remove bag record from ${studentName}? This cannot be undone easily.`}
+        </p>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
+          <button onClick={onConfirm}
+            className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all ${isIssue ? 'bg-[#f0a500] hover:bg-[#d4920a] text-black' : 'bg-red-600 hover:bg-red-700 text-white'}`}>
+            {isIssue ? 'Issue Bag' : 'Revoke'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function StudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -171,6 +201,7 @@ export default function StudentDetail() {
   const [editing, setEditing] = useState(false)
   const [photoUploading, setPhotoUploading] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
+  const [bagConfirm, setBagConfirm] = useState(null) // 'issue' | 'revoke' | null
   const fileInputRef = useRef(null)
 
   useEffect(() => { fetchAll() }, [id])
@@ -337,12 +368,12 @@ export default function StudentDetail() {
               <ShoppingBag size={11} /> {student.bag_issued ? 'Bag issued' : 'No bag'}
             </span>
             {!student.bag_issued ? (
-              <button onClick={() => { if (window.confirm(`Issue bag to ${student.name}?`)) handleIssueBag() }}
+              <button onClick={() => setBagConfirm('issue')}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all">
                 <ShoppingBag size={13} /> Issue Bag
               </button>
             ) : (
-              <button onClick={() => { if (window.confirm(`Revoke bag from ${student.name}?`)) handleRevokeBag() }}
+              <button onClick={() => setBagConfirm('revoke')}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-orange-500/20 hover:text-orange-400 text-[#9ca3af] transition-all">
                 <ShoppingBag size={13} /> Revoke Bag
               </button>
@@ -448,6 +479,8 @@ export default function StudentDetail() {
 
       <EditModal open={editing} onClose={() => setEditing(false)} onSave={handleEdit} student={student} batches={batches} isAdmin={isAdmin} allUsers={allUsers} />
       <ReversalModal open={!!reversing} onClose={() => setReversing(null)} onConfirm={handleReversal} issuance={reversing} />
+      <BagConfirmModal open={!!bagConfirm} onClose={() => setBagConfirm(null)} action={bagConfirm} studentName={student?.name}
+        onConfirm={() => { setBagConfirm(null); bagConfirm === 'issue' ? handleIssueBag() : handleRevokeBag() }} />
     </div>
   )
 }

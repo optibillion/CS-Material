@@ -7,6 +7,30 @@ import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../../store/authStore'
 
+function BagConfirmModal({ open, onClose, onConfirm, studentName }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-full bg-[#f0a500]/15 flex items-center justify-center">
+            <ShoppingBag size={18} className="text-[#f0a500]" />
+          </div>
+          <div>
+            <h2 className="text-white font-semibold">Issue Bag</h2>
+            <p className="text-[#6b7280] text-xs">{studentName}</p>
+          </div>
+        </div>
+        <p className="text-[#9ca3af] text-sm mb-5">Confirm issuing a Champion Square bag to {studentName}?</p>
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
+          <button onClick={onConfirm} className="flex-1 px-4 py-2.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold text-sm transition-all">Issue Bag</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function IssuerStudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -18,6 +42,7 @@ export default function IssuerStudentDetail() {
   const [phoneModal, setPhoneModal] = useState(false)
   const [phoneInput, setPhoneInput] = useState('')
   const [phoneError, setPhoneError] = useState('')
+  const [bagConfirmOpen, setBagConfirmOpen] = useState(false)
   const [phoneSaving, setPhoneSaving] = useState(false)
 
   useEffect(() => { fetchAll() }, [id])
@@ -114,7 +139,7 @@ export default function IssuerStudentDetail() {
               <ShoppingBag size={11} /> {student.bag_issued ? 'Bag issued' : 'No bag'}
             </span>
             {!student.bag_issued && (
-              <button onClick={() => { if (window.confirm(`Issue bag to ${student.name}?`)) handleIssueBag() }}
+              <button onClick={() => setBagConfirmOpen(true)}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all">
                 <ShoppingBag size={13} /> Issue Bag
               </button>
@@ -188,6 +213,9 @@ export default function IssuerStudentDetail() {
           ))}
         </div>
       </div>
+
+      <BagConfirmModal open={bagConfirmOpen} onClose={() => setBagConfirmOpen(false)} studentName={student?.name}
+        onConfirm={() => { setBagConfirmOpen(false); handleIssueBag() }} />
 
       {phoneModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
