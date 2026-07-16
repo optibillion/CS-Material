@@ -290,8 +290,9 @@ export default function AdminIssue() {
     if (wantsBag) {
       const { error: bagErr } = await supabase.from('students').update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }).eq('id', selectedStudent.id)
       if (bagErr) {
+        console.error('Bag issue error:', bagErr)
         if (bagErr.code === '42703') toast.error('Run migration: add_bag_tracking.sql')
-        else toast.error('Failed to issue bag')
+        else toast.error(`Bag error: ${bagErr.message || bagErr.code || 'unknown'}`)
         setLoading(false); return
       }
       setSelectedStudent(prev => ({ ...prev, bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }))
