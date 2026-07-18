@@ -406,16 +406,19 @@ export default function InstitutionDetail() {
       await supabase.from('stock').update({ available_qty: (oldEntry.available_qty || 0) + qty }).eq('id', oldEntry.id)
     }
 
-    // Deduct stock for new book
-    let remaining = qty
-    const newEntries = stockEntries.filter(e => e.book_id === changeBookTarget && (e.available_qty || 0) > 0).sort((a, z) => z.available_qty - a.available_qty)
-    for (const entry of newEntries) {
-      if (remaining <= 0) break
-      const deduct = Math.min(remaining, entry.available_qty)
-      await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-      remaining -= deduct
+    // Deduct stock for new book (only if it has stock entries tracked)
+    const allNewEntries = stockEntries.filter(e => e.book_id === changeBookTarget)
+    if (allNewEntries.length > 0) {
+      let remaining = qty
+      const availableEntries = allNewEntries.filter(e => (e.available_qty || 0) > 0).sort((a, z) => z.available_qty - a.available_qty)
+      for (const entry of availableEntries) {
+        if (remaining <= 0) break
+        const deduct = Math.min(remaining, entry.available_qty)
+        await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
+        remaining -= deduct
+      }
+      if (remaining > 0) toast.error(`Stock warning: only ${qty - remaining} of ${qty} copies deducted for new book`)
     }
-    if (remaining > 0) toast.error('Warning: insufficient stock for new book')
 
     const oldLvl = [oldBook.exam_level, oldBook.unit, oldBook.part].filter(Boolean).join(' › ')
     const newLvl = [newBook.exam_level, newBook.unit, newBook.part].filter(Boolean).join(' › ')
