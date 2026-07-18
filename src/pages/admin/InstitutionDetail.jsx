@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
 import { useAuthStore } from '../../store/authStore'
-import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw, CalendarDays } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
@@ -168,6 +168,9 @@ export default function InstitutionDetail() {
   const [reverseModal, setReverseModal] = useState(null)
   const [reverseRestoreStock, setReverseRestoreStock] = useState(true)
   const [reversing, setReversing] = useState(false)
+  const [editDateModal, setEditDateModal] = useState(null)
+  const [editDateValue, setEditDateValue] = useState('')
+  const [editingDate, setEditingDate] = useState(false)
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -315,6 +318,24 @@ export default function InstitutionDetail() {
     toast.success('Allotment reversed')
     setReverseModal(null)
     setReversing(false)
+    fetchAll()
+  }
+
+  async function handleEditBatchDate() {
+    if (!editDateModal || !editDateValue) return
+    setEditingDate(true)
+    const oldDate = format(new Date(editDateModal.allotted_at), 'dd MMM yy')
+    const newAt = new Date(editDateValue + 'T12:00:00').toISOString()
+    const { error } = await supabase
+      .from('allotments')
+      .update({ allotted_at: newAt })
+      .eq('institution_id', id)
+      .eq('allotted_at', editDateModal.allotted_at)
+    if (error) { toast.error('Failed to update date'); setEditingDate(false); return }
+    logAction('ALLOTMENT_DATE_EDITED', `${institution.name} — batch date changed from ${oldDate} to ${format(new Date(newAt), 'dd MMM yy')} (${editDateModal.books.length} book(s), ${editDateModal.totalQty} copies)`)
+    toast.success('Date updated')
+    setEditDateModal(null)
+    setEditingDate(false)
     fetchAll()
   }
 
@@ -528,6 +549,14 @@ export default function InstitutionDetail() {
                     </button>
                     {isAdmin && (
                       <button
+                        onClick={() => { setEditDateValue(batch.allotted_at.slice(0, 10)); setEditDateModal(batch) }}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                        <CalendarDays size={12} />
+                        Edit Date
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
                         onClick={() => { setReverseRestoreStock(batch.stock_deducted !== false); setReverseModal(batch) }}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
                         <RotateCcw size={12} />
@@ -559,6 +588,42 @@ export default function InstitutionDetail() {
 
       {/* Allotment slip modal */}
       <AllotmentSlipModal slipData={slipModal} onClose={() => setSlipModal(null)} />
+
+      {/* Edit batch date modal — admin only */}
+      {editDateModal && (
+        <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center px-4">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-xs p-6">
+            <h2 className="text-white font-semibold text-base mb-1">Edit Batch Date</h2>
+            <p className="text-[#6b7280] text-xs mb-4">
+              {editDateModal.books.length} title{editDateModal.books.length !== 1 ? 's' : ''} · {editDateModal.totalQty} copies
+            </p>
+            <div className="mb-2">
+              <label className="text-[#9ca3af] text-xs mb-1.5 block">Current date</label>
+              <p className="text-white text-sm font-semibold">{format(new Date(editDateModal.allotted_at), 'dd MMM yyyy')}</p>
+            </div>
+            <div className="mt-4 mb-5">
+              <label className="text-[#9ca3af] text-xs mb-1.5 block">New date</label>
+              <input
+                type="date"
+                value={editDateValue}
+                max={today}
+                onChange={e => setEditDateValue(e.target.value)}
+                className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setEditDateModal(null)} disabled={editingDate}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handleEditBatchDate} disabled={editingDate || !editDateValue || editDateValue === editDateModal.allotted_at.slice(0, 10)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all disabled:opacity-50">
+                {editingDate ? 'Saving…' : 'Save Date'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reverse allotment modal — admin only */}
       {reverseModal && (
