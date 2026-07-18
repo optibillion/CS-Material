@@ -171,6 +171,7 @@ export default function InstitutionDetail() {
   const [editDateModal, setEditDateModal] = useState(null)
   const [editDateValue, setEditDateValue] = useState('')
   const [editingDate, setEditingDate] = useState(false)
+  const [editQty, setEditQty] = useState(null) // { batchAt, bookId, value }
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -336,6 +337,27 @@ export default function InstitutionDetail() {
     toast.success('Date updated')
     setEditDateModal(null)
     setEditingDate(false)
+    fetchAll()
+  }
+
+  async function saveEditQty() {
+    if (!editQty) return
+    const newQty = parseInt(editQty.value)
+    if (!newQty || newQty < 1) { toast.error('Invalid quantity'); return }
+    const batch = batches.find(b => b.allotted_at === editQty.batchAt)
+    const book = batch?.books.find(b => b.book_id === editQty.bookId)
+    if (!book || newQty === book.qty) { setEditQty(null); return }
+    const { error } = await supabase
+      .from('allotments')
+      .update({ qty: newQty })
+      .eq('institution_id', id)
+      .eq('allotted_at', editQty.batchAt)
+      .eq('book_id', editQty.bookId)
+    if (error) { toast.error('Failed to update quantity'); return }
+    const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
+    logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: qty ${book.qty} → ${newQty} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})`)
+    toast.success('Quantity updated')
+    setEditQty(null)
     fetchAll()
   }
 
@@ -568,11 +590,36 @@ export default function InstitutionDetail() {
                 <div className="space-y-1.5">
                   {batch.books.map((b, i) => {
                     const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+                    const isEditingThis = editQty?.batchAt === batch.allotted_at && editQty?.bookId === b.book_id
                     return (
                       <div key={i} className="flex items-center gap-2">
                         <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
                         <span className="text-[#9ca3af] text-xs flex-1 truncate">{lvl ? `${lvl} — ${b.title}` : b.title}</span>
-                        <span className="text-white text-xs font-semibold flex-shrink-0">×{b.qty}</span>
+                        {isEditingThis ? (
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <input
+                              type="number" min="1"
+                              value={editQty.value}
+                              onChange={e => setEditQty(q => ({ ...q, value: e.target.value.replace(/\D/g, '') }))}
+                              onKeyDown={e => { if (e.key === 'Enter') saveEditQty(); if (e.key === 'Escape') setEditQty(null) }}
+                              autoFocus
+                              className="w-14 bg-[#12121f] border border-[#bd0a0a] rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none"
+                            />
+                            <button onClick={saveEditQty} className="text-emerald-400 hover:text-emerald-300 text-xs px-1 transition-colors">✓</button>
+                            <button onClick={() => setEditQty(null)} className="text-[#6b7280] hover:text-white text-xs px-1 transition-colors">✕</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <span className="text-white text-xs font-semibold">×{b.qty}</span>
+                            {isAdmin && (
+                              <button
+                                onClick={() => setEditQty({ batchAt: batch.allotted_at, bookId: b.book_id, value: String(b.qty) })}
+                                className="text-[#4b5563] hover:text-[#9ca3af] transition-colors">
+                                <Pencil size={10} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )
                   })}
