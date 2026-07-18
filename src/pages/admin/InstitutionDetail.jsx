@@ -179,7 +179,6 @@ export default function InstitutionDetail() {
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
   const [qtyMap, setQtyMap] = useState({}) // { bookId: qty string }
-  const [deductStock, setDeductStock] = useState(false)
   const [discountPct, setDiscountPct] = useState(0)
   const [issueDate, setIssueDate] = useState(today)
   const [submitting, setSubmitting] = useState(false)
@@ -371,7 +370,12 @@ export default function InstitutionDetail() {
 
     const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
     logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: qty ${book.qty} → ${newQty} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})${stockNote}`)
-    toast.success('Quantity updated')
+    const stockMsg = entry
+      ? diff > 0
+        ? `Qty updated · ${diff} copies deducted from stock`
+        : `Qty updated · ${Math.abs(diff)} copies added back to stock`
+      : 'Quantity updated'
+    toast.success(stockMsg)
     setEditQty(null)
     fetchAll()
   }
@@ -385,7 +389,7 @@ export default function InstitutionDetail() {
   )
   const selectedBooks = books.filter(b => parseInt(qtyMap[b.id] || 0) > 0)
 
-  function openIssue() { setQtyMap({}); setDeductStock(true); setDiscountPct(0); setExamFilter('all'); setUnitFilter('all'); setIssueDate(today); setIssueOpen(true) }
+  function openIssue() { setQtyMap({}); setDiscountPct(0); setExamFilter('all'); setUnitFilter('all'); setIssueDate(today); setIssueOpen(true) }
 
   async function handleIssue() {
     if (selectedBooks.length === 0) { toast.error('Select at least one book with quantity'); return }
@@ -401,32 +405,30 @@ export default function InstitutionDetail() {
       institution_name: institution.name,
       discount_pct: discountPct || 0,
       unit_mrp: b.mrp || null,
-      stock_deducted: deductStock,
+      stock_deducted: true,
     }))
     const { error } = await supabase.from('allotments').insert(rows)
     if (error) { toast.error('Failed to record allotment'); setSubmitting(false); return }
 
-    if (deductStock) {
-      for (const b of selectedBooks) {
-        let remaining = parseInt(qtyMap[b.id])
-        const entries = stockEntries
-          .filter(e => e.book_id === b.id && (e.available_qty || 0) > 0)
-          .sort((a, z) => z.available_qty - a.available_qty)
-        for (const entry of entries) {
-          if (remaining <= 0) break
-          const deduct = Math.min(remaining, entry.available_qty)
-          await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-          remaining -= deduct
-        }
-        if (remaining > 0) toast.error(`Warning: insufficient stock for some books`)
+    for (const b of selectedBooks) {
+      let remaining = parseInt(qtyMap[b.id])
+      const entries = stockEntries
+        .filter(e => e.book_id === b.id && (e.available_qty || 0) > 0)
+        .sort((a, z) => z.available_qty - a.available_qty)
+      for (const entry of entries) {
+        if (remaining <= 0) break
+        const deduct = Math.min(remaining, entry.available_qty)
+        await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
+        remaining -= deduct
       }
+      if (remaining > 0) toast.error(`Warning: insufficient stock for some books`)
     }
 
     const bookList = selectedBooks.map(b => {
       const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
       return `${b.title}${lvl ? ` (${lvl})` : ''} ×${qtyMap[b.id]}`
     }).join(', ')
-    logAction('ALLOTMENT_CREATED', `${institution.name} — ${selectedBooks.length} book(s): ${bookList}${deductStock ? ' [stock deducted]' : ''}${discountPct > 0 ? ` [${discountPct}% discount]` : ''}`)
+    logAction('ALLOTMENT_CREATED', `${institution.name} — ${selectedBooks.length} book(s): ${bookList} [stock deducted]${discountPct > 0 ? ` [${discountPct}% discount]` : ''}`)
     toast.success(`${selectedBooks.length} book(s) allotted to ${institution.name}`)
     setSubmitting(false)
     setIssueOpen(false)
@@ -786,7 +788,7 @@ export default function InstitutionDetail() {
                   const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
                   const avail = stockMap[b.id] ?? null
                   const qty = parseInt(qtyMap[b.id] || 0)
-                  const overStock = deductStock && avail !== null && qty > avail
+                  const overStock = avail !== null && qty > avail
                   return (
                     <div key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${qty > 0 ? 'bg-[#bd0a0a]/10 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
                       <div className="flex-1 min-w-0">
@@ -841,14 +843,6 @@ export default function InstitutionDetail() {
                   })}
                 </div>
               )}
-
-              <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border cursor-pointer transition-all ${deductStock ? 'bg-orange-500/10 border-orange-500/30' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
-                <input type="checkbox" checked={deductStock} onChange={e => setDeductStock(e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
-                <div>
-                  <p className="text-white text-sm font-medium">{deductStock ? 'Deducting from Stock' : 'Not Deducting from Stock'}</p>
-                  <p className="text-[#6b7280] text-xs">{deductStock ? 'Uncheck to skip stock deduction' : 'Check to reduce available inventory'}</p>
-                </div>
-              </label>
 
               <div className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${discountPct > 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
                 <div className="flex-1">
