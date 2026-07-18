@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
 import { useAuthStore } from '../../store/authStore'
-import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw, CalendarDays } from 'lucide-react'
+import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw, CalendarDays, ArrowLeftRight, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
@@ -172,6 +172,10 @@ export default function InstitutionDetail() {
   const [editDateValue, setEditDateValue] = useState('')
   const [editingDate, setEditingDate] = useState(false)
   const [editQty, setEditQty] = useState(null) // { batchAt, bookId, value }
+  const [changeBookModal, setChangeBookModal] = useState(null) // { batchAt, bookId, qty, currentBook }
+  const [changeBookTarget, setChangeBookTarget] = useState('')
+  const [changingBook, setChangingBook] = useState(false)
+  const [changeBookSearch, setChangeBookSearch] = useState('')
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -377,6 +381,49 @@ export default function InstitutionDetail() {
       : 'Quantity updated'
     toast.success(stockMsg)
     setEditQty(null)
+    fetchAll()
+  }
+
+  async function handleChangeBook() {
+    if (!changeBookModal || !changeBookTarget || changeBookTarget === changeBookModal.bookId) return
+    setChangingBook(true)
+    const oldBook = changeBookModal.currentBook
+    const newBook = books.find(b => b.id === changeBookTarget)
+    if (!newBook) { setChangingBook(false); return }
+    const qty = changeBookModal.qty
+
+    const { error } = await supabase
+      .from('allotments')
+      .update({ book_id: changeBookTarget, unit_mrp: newBook.mrp || null })
+      .eq('institution_id', id)
+      .eq('allotted_at', changeBookModal.batchAt)
+      .eq('book_id', changeBookModal.bookId)
+    if (error) { toast.error('Failed to change book'); setChangingBook(false); return }
+
+    // Restore stock for old book
+    const oldEntry = stockEntries.find(e => e.book_id === changeBookModal.bookId)
+    if (oldEntry) {
+      await supabase.from('stock').update({ available_qty: (oldEntry.available_qty || 0) + qty }).eq('id', oldEntry.id)
+    }
+
+    // Deduct stock for new book
+    let remaining = qty
+    const newEntries = stockEntries.filter(e => e.book_id === changeBookTarget && (e.available_qty || 0) > 0).sort((a, z) => z.available_qty - a.available_qty)
+    for (const entry of newEntries) {
+      if (remaining <= 0) break
+      const deduct = Math.min(remaining, entry.available_qty)
+      await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
+      remaining -= deduct
+    }
+    if (remaining > 0) toast.error('Warning: insufficient stock for new book')
+
+    const oldLvl = [oldBook.exam_level, oldBook.unit, oldBook.part].filter(Boolean).join(' › ')
+    const newLvl = [newBook.exam_level, newBook.unit, newBook.part].filter(Boolean).join(' › ')
+    logAction('ALLOTMENT_BOOK_CHANGED', `${institution.name} — "${oldLvl} (${oldBook.medium})" → "${newLvl} (${newBook.medium})" ×${qty} (batch: ${format(new Date(changeBookModal.batchAt), 'dd MMM yy')}) [stock adjusted]`)
+    toast.success(`Book changed: ${oldBook.medium} → ${newBook.medium} · ${qty} copies restored from old, ${qty} deducted from new`, { duration: 5000 })
+    setChangeBookModal(null)
+    setChangeBookTarget('')
+    setChangingBook(false)
     fetchAll()
   }
 
@@ -612,6 +659,13 @@ export default function InstitutionDetail() {
                       <div key={i} className="flex items-center gap-2">
                         <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
                         <span className="text-[#9ca3af] text-xs flex-1 truncate">{lvl ? `${lvl} — ${b.title}` : b.title}</span>
+                        {isAdmin && !isEditingThis && (
+                          <button
+                            onClick={() => { setChangeBookTarget(''); setChangeBookSearch(''); setChangeBookModal({ batchAt: batch.allotted_at, bookId: b.book_id, qty: b.qty, currentBook: b }) }}
+                            className="text-[#4b5563] hover:text-blue-400 transition-colors flex-shrink-0" title="Change book">
+                            <ArrowLeftRight size={10} />
+                          </button>
+                        )}
                         {isEditingThis ? (
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <input
@@ -688,6 +742,64 @@ export default function InstitutionDetail() {
           </div>
         </div>
       )}
+
+      {/* Change book modal — admin only */}
+      {changeBookModal && (() => {
+        const cb = changeBookModal
+        const sameUnitBooks = books.filter(b => b.id !== cb.bookId && b.unit === cb.currentBook.unit && b.exam_level === cb.currentBook.exam_level)
+        const searchLower = changeBookSearch.toLowerCase()
+        const filteredBooks = (changeBookSearch ? books.filter(b => b.id !== cb.bookId && (b.title?.toLowerCase().includes(searchLower) || b.unit?.toLowerCase().includes(searchLower) || b.part?.toLowerCase().includes(searchLower))) : sameUnitBooks)
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center px-4">
+            <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm flex flex-col max-h-[85vh]">
+              <div className="px-5 pt-5 pb-3 flex-shrink-0">
+                <h2 className="text-white font-semibold text-base mb-1">Change Book</h2>
+                <div className="bg-[#12121f] rounded-lg px-3 py-2 mb-3">
+                  <p className="text-[#6b7280] text-[10px] uppercase tracking-wide mb-0.5">Current</p>
+                  <p className="text-white text-xs font-semibold">{[cb.currentBook.exam_level, cb.currentBook.unit, cb.currentBook.part].filter(Boolean).join(' › ')}</p>
+                  <p className="text-[#9ca3af] text-[11px] truncate">{cb.currentBook.title}</p>
+                  <p className="text-orange-400 text-[10px] mt-0.5 capitalize">{cb.currentBook.medium} · ×{cb.qty}</p>
+                </div>
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+                  <input
+                    value={changeBookSearch}
+                    onChange={e => setChangeBookSearch(e.target.value)}
+                    placeholder={changeBookSearch ? 'Search all books…' : `Showing same paper (${cb.currentBook.unit}) — search to see all`}
+                    className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]"
+                  />
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-1.5">
+                {filteredBooks.length === 0 ? (
+                  <p className="text-[#4b5563] text-xs text-center py-4">No books found</p>
+                ) : filteredBooks.map(b => {
+                  const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+                  const selected = changeBookTarget === b.id
+                  return (
+                    <button key={b.id} onClick={() => setChangeBookTarget(b.id)}
+                      className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${selected ? 'bg-blue-500/10 border-blue-500/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
+                      <p className={`text-xs font-semibold ${selected ? 'text-blue-300' : 'text-white'}`}>{lvl}</p>
+                      <p className="text-[#6b7280] text-[11px] truncate mt-0.5">{b.title}</p>
+                      <p className={`text-[10px] mt-0.5 capitalize ${b.medium === 'english' ? 'text-blue-400' : b.medium === 'hindi' ? 'text-orange-400' : 'text-purple-400'}`}>{b.medium}</p>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="px-5 pb-5 pt-3 border-t border-[#2a2a45] flex gap-3 flex-shrink-0">
+                <button onClick={() => setChangeBookModal(null)} disabled={changingBook}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">
+                  Cancel
+                </button>
+                <button onClick={handleChangeBook} disabled={changingBook || !changeBookTarget}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all disabled:opacity-50">
+                  {changingBook ? 'Changing…' : 'Change Book'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Reverse allotment modal — admin only */}
       {reverseModal && (
