@@ -207,7 +207,14 @@ export default function InstitutionDetail() {
   const bookTotals = {}
   for (const a of allotments) {
     if (!a.book_id) continue
-    if (!bookTotals[a.book_id]) bookTotals[a.book_id] = { title: a.books?.title, qty: 0 }
+    if (!bookTotals[a.book_id]) bookTotals[a.book_id] = {
+      title: a.books?.title,
+      exam_level: a.books?.exam_level,
+      unit: a.books?.unit,
+      part: a.books?.part,
+      medium: a.books?.medium,
+      qty: 0,
+    }
     bookTotals[a.book_id].qty += a.qty || 0
   }
   const totalQty = allotments.reduce((s, a) => s + (a.qty || 0), 0)
@@ -413,15 +420,30 @@ export default function InstitutionDetail() {
             <h2 className="text-white font-semibold text-sm">Books Summary</h2>
           </div>
           <div className="divide-y divide-[#2a2a45]">
-            {Object.entries(bookTotals).map(([bookId, { title, qty }]) => (
-              <div key={bookId} className="px-5 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-3 min-w-0">
-                  <BookOpen size={14} className="text-[#bd0a0a] flex-shrink-0" />
-                  <p className="text-[#9ca3af] text-sm truncate">{title}</p>
-                </div>
-                <span className="text-white text-sm font-semibold flex-shrink-0 ml-3">{qty} copies</span>
-              </div>
-            ))}
+            {Object.entries(bookTotals)
+              .sort(([, a], [, b]) => {
+                const key = x => [x.exam_level, x.unit, x.part, x.title].map(v => v || '').join('\x00')
+                return key(a).localeCompare(key(b))
+              })
+              .map(([bookId, { title, qty, exam_level, unit, part }]) => {
+                const lvl = [exam_level, unit, part].filter(Boolean).join(' › ')
+                return (
+                  <div key={bookId} className="px-5 py-3 flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <BookOpen size={13} className="text-[#bd0a0a] flex-shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        {lvl ? (
+                          <p className="text-white text-xs font-semibold leading-snug">{lvl}</p>
+                        ) : (
+                          <p className="text-[#9ca3af] text-sm truncate">{title}</p>
+                        )}
+                        {lvl && <p className="text-[#6b7280] text-[11px] truncate mt-0.5">{title}</p>}
+                      </div>
+                    </div>
+                    <span className="text-white text-xs font-semibold flex-shrink-0 mt-0.5">{qty} copies</span>
+                  </div>
+                )
+              })}
           </div>
         </div>
       )}
