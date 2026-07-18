@@ -347,6 +347,9 @@ export default function InstitutionDetail() {
     const batch = batches.find(b => b.allotted_at === editQty.batchAt)
     const book = batch?.books.find(b => b.book_id === editQty.bookId)
     if (!book || newQty === book.qty) { setEditQty(null); return }
+
+    const diff = newQty - book.qty // positive = qty increased → deduct stock; negative = qty decreased → add stock back
+
     const { error } = await supabase
       .from('allotments')
       .update({ qty: newQty })
@@ -354,8 +357,20 @@ export default function InstitutionDetail() {
       .eq('allotted_at', editQty.batchAt)
       .eq('book_id', editQty.bookId)
     if (error) { toast.error('Failed to update quantity'); return }
+
+    // Adjust stock by the difference
+    let stockNote = ''
+    const entry = stockEntries.find(e => e.book_id === editQty.bookId)
+    if (entry) {
+      const newAvail = Math.max(0, (entry.available_qty || 0) - diff)
+      await supabase.from('stock').update({ available_qty: newAvail }).eq('id', entry.id)
+      stockNote = diff > 0
+        ? ` [stock deducted ${diff}]`
+        : ` [stock restored ${Math.abs(diff)}]`
+    }
+
     const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
-    logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: qty ${book.qty} → ${newQty} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})`)
+    logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: qty ${book.qty} → ${newQty} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})${stockNote}`)
     toast.success('Quantity updated')
     setEditQty(null)
     fetchAll()
