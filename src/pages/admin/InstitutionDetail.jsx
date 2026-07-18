@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
 import { useAuthStore } from '../../store/authStore'
-import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2 } from 'lucide-react'
+import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
@@ -165,6 +165,9 @@ export default function InstitutionDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
   const [slipModal, setSlipModal] = useState(null)
+  const [reverseModal, setReverseModal] = useState(null)
+  const [reverseRestoreStock, setReverseRestoreStock] = useState(true)
+  const [reversing, setReversing] = useState(false)
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -239,6 +242,7 @@ export default function InstitutionDetail() {
       const mrp = unit_mrp || 0
       const disc = groups[batchKey].discount_pct
       groups[batchKey].books.push({
+        book_id: a.book_id,
         title: a.books?.title,
         exam_level: a.books?.exam_level,
         unit: a.books?.unit,
@@ -275,6 +279,41 @@ export default function InstitutionDetail() {
     if (error) { toast.error('Failed to update'); return }
     toast.success('Distributor updated')
     logAction('DISTRIBUTOR_UPDATED', form.name.trim())
+    fetchAll()
+  }
+
+  async function handleReverseBatch() {
+    if (!reverseModal) return
+    setReversing(true)
+    const batch = reverseModal
+
+    const { error: delError } = await supabase
+      .from('allotments')
+      .delete()
+      .eq('institution_id', id)
+      .eq('allotted_at', batch.allotted_at)
+
+    if (delError) { toast.error('Failed to reverse: ' + delError.message); setReversing(false); return }
+
+    if (reverseRestoreStock) {
+      for (const b of batch.books) {
+        if (!b.book_id) continue
+        const entry = stockEntries.find(e => e.book_id === b.book_id)
+        if (entry) {
+          await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + b.qty }).eq('id', entry.id)
+        }
+      }
+    }
+
+    const bookList = batch.books.map(b => {
+      const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+      return `${lvl || b.title} ×${b.qty}`
+    }).join(', ')
+    logAction('ALLOTMENT_REVERSED', `${institution.name} — ${batch.books.length} book(s) reversed (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList}${reverseRestoreStock ? ' [stock restored]' : ''}`)
+
+    toast.success('Allotment reversed')
+    setReverseModal(null)
+    setReversing(false)
     fetchAll()
   }
 
@@ -475,12 +514,22 @@ export default function InstitutionDetail() {
                       <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
                     )}
                   </div>
-                  <button
-                    onClick={() => openSlipModal(batch)}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all flex-shrink-0 ml-3">
-                    <FileDown size={12} />
-                    Slip
-                  </button>
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                    <button
+                      onClick={() => openSlipModal(batch)}
+                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                      <FileDown size={12} />
+                      Slip
+                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => { setReverseRestoreStock(true); setReverseModal(batch) }}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
+                        <RotateCcw size={12} />
+                        Reverse
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-1.5">
                   {batch.books.map((b, i) => {
@@ -505,6 +554,49 @@ export default function InstitutionDetail() {
 
       {/* Allotment slip modal */}
       <AllotmentSlipModal slipData={slipModal} onClose={() => setSlipModal(null)} />
+
+      {/* Reverse allotment modal — admin only */}
+      {reverseModal && (
+        <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center px-4">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
+            <h2 className="text-white font-semibold text-base mb-1">Reverse Allotment?</h2>
+            <p className="text-[#6b7280] text-xs mb-4">
+              {format(new Date(reverseModal.allotted_at), 'dd MMM yy, hh:mm a')}
+              {reverseModal.allotted_by_name ? ` · by ${reverseModal.allotted_by_name}` : ''}
+              {' · '}{reverseModal.books.length} title{reverseModal.books.length !== 1 ? 's' : ''} · {reverseModal.totalQty} copies
+            </p>
+            <div className="space-y-1.5 mb-4 bg-[#12121f] rounded-lg p-3">
+              {reverseModal.books.map((b, i) => {
+                const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+                return (
+                  <div key={i} className="flex items-center gap-2">
+                    <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
+                    <span className="text-[#9ca3af] text-xs flex-1 truncate">{lvl || b.title}</span>
+                    <span className="text-white text-xs font-semibold flex-shrink-0">×{b.qty}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border cursor-pointer transition-all mb-5 ${reverseRestoreStock ? 'bg-orange-500/10 border-orange-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
+              <input type="checkbox" checked={reverseRestoreStock} onChange={e => setReverseRestoreStock(e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
+              <div>
+                <p className="text-white text-sm font-medium">Restore stock</p>
+                <p className="text-[#6b7280] text-xs">Add quantities back to inventory</p>
+              </div>
+            </label>
+            <div className="flex gap-3">
+              <button onClick={() => setReverseModal(null)} disabled={reversing}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">
+                Cancel
+              </button>
+              <button onClick={handleReverseBatch} disabled={reversing}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition-all disabled:opacity-50">
+                {reversing ? 'Reversing…' : 'Yes, Reverse'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Issue panel modal */}
       {issueOpen && (
