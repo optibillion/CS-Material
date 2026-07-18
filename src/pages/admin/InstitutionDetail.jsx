@@ -573,18 +573,23 @@ export default function InstitutionDetail() {
                 const key = x => [x.exam_level, x.unit, x.part, x.title].map(v => v || '').join('\x00')
                 return key(a).localeCompare(key(b))
               })
-              .map(([bookId, { title, qty, exam_level, unit, part }]) => {
+              .map(([bookId, { title, qty, exam_level, unit, part, medium }]) => {
                 const lvl = [exam_level, unit, part].filter(Boolean).join(' › ')
                 return (
                   <div key={bookId} className="px-5 py-3 flex items-start justify-between gap-3">
                     <div className="flex items-start gap-2 min-w-0">
                       <BookOpen size={13} className="text-[#bd0a0a] flex-shrink-0 mt-0.5" />
                       <div className="min-w-0">
-                        {lvl ? (
-                          <p className="text-white text-xs font-semibold leading-snug">{lvl}</p>
-                        ) : (
-                          <p className="text-[#9ca3af] text-sm truncate">{title}</p>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {medium === 'hindi' && <span className="text-[9px] px-1 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30 font-semibold flex-shrink-0">H</span>}
+                          {medium === 'english' && <span className="text-[9px] px-1 py-0.5 rounded border bg-blue-500/20 text-blue-400 border-blue-500/30 font-semibold flex-shrink-0">E</span>}
+                          {medium === 'both' && <span className="text-[9px] px-1 py-0.5 rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 font-semibold flex-shrink-0">B</span>}
+                          {lvl ? (
+                            <p className="text-white text-xs font-semibold leading-snug">{lvl}</p>
+                          ) : (
+                            <p className="text-[#9ca3af] text-xs truncate">{title}</p>
+                          )}
+                        </div>
                         {lvl && <p className="text-[#6b7280] text-[11px] truncate mt-0.5">{title}</p>}
                       </div>
                     </div>
