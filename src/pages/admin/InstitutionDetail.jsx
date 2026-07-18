@@ -236,6 +236,7 @@ export default function InstitutionDetail() {
           totalQty: 0,
           discount_pct: a.discount_pct || 0,
           totalValue: 0,
+          stock_deducted: a.stock_deducted ?? false,
         }
       }
       const unit_mrp = a.unit_mrp ?? a.books?.mrp ?? null
@@ -342,6 +343,7 @@ export default function InstitutionDetail() {
       institution_name: institution.name,
       discount_pct: discountPct || 0,
       unit_mrp: b.mrp || null,
+      stock_deducted: deductStock,
     }))
     const { error } = await supabase.from('allotments').insert(rows)
     if (error) { toast.error('Failed to record allotment'); setSubmitting(false); return }
@@ -513,6 +515,9 @@ export default function InstitutionDetail() {
                     {batch.totalValue > 0 && (
                       <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
                     )}
+                    <p className={`text-xs mt-0.5 font-medium ${batch.stock_deducted ? 'text-orange-400' : 'text-[#4b5563]'}`}>
+                      {batch.stock_deducted ? '📦 Stock was deducted' : '📦 Stock was NOT deducted'}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                     <button
@@ -523,7 +528,7 @@ export default function InstitutionDetail() {
                     </button>
                     {isAdmin && (
                       <button
-                        onClick={() => { setReverseRestoreStock(true); setReverseModal(batch) }}
+                        onClick={() => { setReverseRestoreStock(batch.stock_deducted ?? true); setReverseModal(batch) }}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
                         <RotateCcw size={12} />
                         Reverse
@@ -576,6 +581,9 @@ export default function InstitutionDetail() {
                   </div>
                 )
               })}
+            </div>
+            <div className={`px-3 py-2 rounded-lg mb-3 text-xs font-semibold ${reverseModal.stock_deducted ? 'bg-orange-500/10 text-orange-400' : 'bg-[#12121f] text-[#4b5563]'}`}>
+              {reverseModal.stock_deducted ? '📦 Stock WAS deducted when this was issued' : '📦 Stock was NOT deducted when this was issued'}
             </div>
             <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border cursor-pointer transition-all mb-5 ${reverseRestoreStock ? 'bg-orange-500/10 border-orange-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
               <input type="checkbox" checked={reverseRestoreStock} onChange={e => setReverseRestoreStock(e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
