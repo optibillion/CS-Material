@@ -180,10 +180,11 @@ async function setPermission(user, field, value) {
   fetchUsers()
 }
 
-async function togglePrice(user) {
-  const { error } = await supabase.from('users').update({ can_price: !user.can_price }).eq('id', user.id)
+async function setPricePermission(user, level) {
+  const newVal = user.can_price === level ? null : level
+  const { error } = await supabase.from('users').update({ can_price: newVal }).eq('id', user.id)
   if (error) { toast.error('Failed to update permission'); return }
-  logAction('USER_UPDATED', `${user.name} (@${user.username}) — can_price set to ${!user.can_price}`)
+  logAction('USER_UPDATED', `${user.name} (@${user.username}) — can_price set to ${newVal || 'none'}`)
   fetchUsers()
 }
 
@@ -279,11 +280,15 @@ async function togglePrice(user) {
                         </div>
                       </div>
                       <div>
-                        <p className="text-[#6b7280] text-xs mb-1">Book Pricing</p>
-                        <button onClick={() => togglePrice(u)}
-                          className={`text-xs px-2 py-0.5 rounded border font-medium transition-all ${u.can_price ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
-                          {u.can_price ? 'enabled' : 'off'}
-                        </button>
+                        <p className="text-[#6b7280] text-xs mb-1">Book Prices</p>
+                        <div className="flex gap-1">
+                          {['view', 'edit'].map(level => (
+                            <button key={level} onClick={() => setPricePermission(u, level)}
+                              className={`text-xs px-2 py-0.5 rounded border font-medium capitalize transition-all ${u.can_price === level ? (level === 'edit' ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40 text-red-400' : 'bg-blue-500/20 border-blue-500/40 text-blue-400') : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
+                              {level}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ) : (

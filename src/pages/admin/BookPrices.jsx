@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
+import { useAuthStore } from '../../store/authStore'
 
 const MEDIUM_COLORS = {
   hindi:   { bg: 'bg-[#bd0a0a]', text: 'text-white', label: 'HINDI' },
@@ -11,6 +12,9 @@ const MEDIUM_COLORS = {
 }
 
 export default function BookPrices() {
+  const { priceAccess, isAdmin, isAccountant } = useAuthStore()
+  const canEdit = isAdmin || isAccountant || priceAccess === 'edit'
+
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -83,24 +87,32 @@ export default function BookPrices() {
           {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{book.title}</p>}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          {book.mrp != null && !isDirty && (
-            <span className="text-[#6b7280] text-xs">₹{book.mrp}</span>
+          {canEdit ? (
+            <>
+              {book.mrp != null && !isDirty && (
+                <span className="text-[#6b7280] text-xs">₹{book.mrp}</span>
+              )}
+              <span className="text-[#6b7280] text-sm">₹</span>
+              <input
+                type="number" min="0" step="0.01"
+                placeholder={book.mrp != null ? String(book.mrp) : '—'}
+                value={currentDisplay}
+                onChange={e => setMrpEdits(m => ({ ...m, [book.id]: e.target.value }))}
+                onKeyDown={e => { if (e.key === 'Enter' && isDirty) handleSave(book.id, book.title, editVal) }}
+                className={`w-24 bg-[#12121f] border rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none transition-all ${isDirty ? 'border-[#f0a500] focus:border-[#f0a500]' : 'border-[#2a2a45] focus:border-[#f0a500]'}`}
+              />
+              <button
+                onClick={() => isDirty && handleSave(book.id, book.title, editVal)}
+                disabled={!isDirty || savingMrp === book.id}
+                className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all w-14 text-center ${isDirty ? 'bg-[#f0a500] hover:bg-[#d4920a] text-black' : 'bg-[#2a2a45] text-[#4b5563] cursor-default'}`}>
+                {savingMrp === book.id ? '…' : isDirty ? 'Save' : 'set'}
+              </button>
+            </>
+          ) : (
+            <span className="text-white text-sm font-medium">
+              {book.mrp != null ? `₹${book.mrp}` : <span className="text-[#4b5563]">—</span>}
+            </span>
           )}
-          <span className="text-[#6b7280] text-sm">₹</span>
-          <input
-            type="number" min="0" step="0.01"
-            placeholder={book.mrp != null ? String(book.mrp) : '—'}
-            value={currentDisplay}
-            onChange={e => setMrpEdits(m => ({ ...m, [book.id]: e.target.value }))}
-            onKeyDown={e => { if (e.key === 'Enter' && isDirty) handleSave(book.id, book.title, editVal) }}
-            className={`w-24 bg-[#12121f] border rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none transition-all ${isDirty ? 'border-[#f0a500] focus:border-[#f0a500]' : 'border-[#2a2a45] focus:border-[#f0a500]'}`}
-          />
-          <button
-            onClick={() => isDirty && handleSave(book.id, book.title, editVal)}
-            disabled={!isDirty || savingMrp === book.id}
-            className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all w-14 text-center ${isDirty ? 'bg-[#f0a500] hover:bg-[#d4920a] text-black' : 'bg-[#2a2a45] text-[#4b5563] cursor-default'}`}>
-            {savingMrp === book.id ? '…' : isDirty ? 'Save' : 'set'}
-          </button>
         </div>
       </div>
     )

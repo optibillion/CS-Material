@@ -11,7 +11,7 @@ export const useAuthStore = create(
       isAccountant: false,
       allotmentAccess: null,
       stockAccess: null,
-      priceAccess: false,
+      priceAccess: null,
       loginAt: null,
 
       login: async (username, password) => {
@@ -51,7 +51,7 @@ export const useAuthStore = create(
           isAccountant,
           allotmentAccess: fullAccess ? 'edit' : (safeProfile.can_allot || null),
           stockAccess: fullAccess ? 'edit' : (safeProfile.can_stock || null),
-          priceAccess: fullAccess || !!safeProfile.can_price,
+          priceAccess: fullAccess ? 'edit' : (safeProfile.can_price || null),
           loginAt: Date.now()
         })
         return safeProfile
@@ -59,7 +59,7 @@ export const useAuthStore = create(
 
       logout: async () => {
         await supabase.auth.signOut()
-        set({ user: null, profile: null, isAdmin: false, isAccountant: false, allotmentAccess: null, stockAccess: null, priceAccess: false, loginAt: null })
+        set({ user: null, profile: null, isAdmin: false, isAccountant: false, allotmentAccess: null, stockAccess: null, priceAccess: null, loginAt: null })
       }
     }),
     {
