@@ -12,7 +12,9 @@ export default function SalesView() {
   const [receiptData, setReceiptData] = useState(null)
 
   const today = new Date().toISOString().slice(0, 10)
-  const [dateFilter, setDateFilter] = useState(today)
+  const [dateFrom, setDateFrom] = useState(today)
+  const [dateTo, setDateTo] = useState(today)
+  const [showAll, setShowAll] = useState(false)
 
   useEffect(() => { fetchSales() }, [])
 
@@ -53,7 +55,11 @@ export default function SalesView() {
   }, [sales])
 
   const filteredTxns = transactions.filter(t => {
-    if (t.sold_at.slice(0, 10) !== dateFilter) return false
+    if (!showAll) {
+      const txnDate = t.sold_at.slice(0, 10)
+      if (dateFrom && txnDate < dateFrom) return false
+      if (dateTo && txnDate > dateTo) return false
+    }
     const q = search.toLowerCase()
     return !q || (
       t.buyer_name?.toLowerCase().includes(q) ||
@@ -76,14 +82,25 @@ export default function SalesView() {
       </div>
 
       {/* Date filter */}
-      <div className="flex items-center gap-3">
-        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-          className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-        {dateFilter !== today && (
-          <button onClick={() => setDateFilter(today)}
-            className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-            Today
-          </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => setShowAll(a => !a)}
+          className={`text-xs px-3 py-2 rounded-lg border font-medium transition-all ${showAll ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#2a2a45] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+          All
+        </button>
+        {!showAll && (
+          <>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+            <span className="text-[#6b7280] text-xs">to</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+            {(dateFrom !== today || dateTo !== today) && (
+              <button onClick={() => { setDateFrom(today); setDateTo(today) }}
+                className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                Today
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -131,7 +148,7 @@ export default function SalesView() {
         {loading ? [...Array(3)].map((_, i) => (
           <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 animate-pulse h-28" />
         )) : filteredTxns.length === 0 ? (
-          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales for this date</div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center text-[#6b7280] text-sm">No sales found</div>
         ) : filteredTxns.map(txn => (
           <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${txn.all_returned ? 'opacity-60' : ''}`}>
             <div className="flex items-start justify-between mb-1">

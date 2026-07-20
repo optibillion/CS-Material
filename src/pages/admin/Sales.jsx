@@ -34,7 +34,9 @@ export default function Sales() {
   const [paymentMode, setPaymentMode] = useState('cash')
 
   const today = new Date().toISOString().slice(0, 10)
-  const [dateFilter, setDateFilter] = useState(today)
+  const [dateFrom, setDateFrom] = useState(today)
+  const [dateTo, setDateTo] = useState(today)
+  const [showAll, setShowAll] = useState(false)
 
   const total = parseFloat(finalPrice) || 0
 
@@ -181,8 +183,11 @@ export default function Sales() {
   }, [sales])
 
   const filteredTxns = transactions.filter(t => {
-    const txnDate = t.sold_at.slice(0, 10)
-    if (txnDate !== dateFilter) return false
+    if (!showAll) {
+      const txnDate = t.sold_at.slice(0, 10)
+      if (dateFrom && txnDate < dateFrom) return false
+      if (dateTo && txnDate > dateTo) return false
+    }
     const q = search.toLowerCase()
     return !q || (
       t.buyer_name?.toLowerCase().includes(q) ||
@@ -211,14 +216,25 @@ export default function Sales() {
       </div>
 
       {/* Date filter */}
-      <div className="flex items-center gap-3">
-        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)}
-          className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
-        {dateFilter !== today && (
-          <button onClick={() => setDateFilter(today)}
-            className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-            Today
-          </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => setShowAll(a => !a)}
+          className={`text-xs px-3 py-2 rounded-lg border font-medium transition-all ${showAll ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#2a2a45] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+          All
+        </button>
+        {!showAll && (
+          <>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+            <span className="text-[#6b7280] text-xs">to</span>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+            {(dateFrom !== today || dateTo !== today) && (
+              <button onClick={() => { setDateFrom(today); setDateTo(today) }}
+                className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                Today
+              </button>
+            )}
+          </>
         )}
       </div>
 

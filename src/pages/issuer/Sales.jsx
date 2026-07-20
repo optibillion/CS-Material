@@ -33,6 +33,11 @@ export default function IssuerSales() {
   const [receiptData, setReceiptData] = useState(null)
   const [expandedTxns, setExpandedTxns] = useState({})
 
+  const today = new Date().toISOString().slice(0, 10)
+  const [dateFrom, setDateFrom] = useState(today)
+  const [dateTo, setDateTo] = useState(today)
+  const [showAll, setShowAll] = useState(false)
+
   useEffect(() => { fetchData() }, [])
 
   async function fetchData() {
@@ -186,14 +191,25 @@ export default function IssuerSales() {
   }, [sales])
 
   const filteredTxns = transactions.filter(t => {
+    if (!showAll) {
+      const txnDate = t.sold_at.slice(0, 10)
+      if (dateFrom && txnDate < dateFrom) return false
+      if (dateTo && txnDate > dateTo) return false
+    }
     const q = salesSearch.toLowerCase()
     return (
+      !q ||
       t.buyer_name?.toLowerCase().includes(q) ||
       t.buyer_phone?.includes(salesSearch) ||
       t.sold_by_name?.toLowerCase().includes(q) ||
       t.books.some(b => b.title?.toLowerCase().includes(q))
     )
   })
+
+  const totalQty = filteredTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const totalRevenue = filteredTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const cashRevenue = filteredTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const onlineRevenue = filteredTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -368,6 +384,62 @@ export default function IssuerSales() {
           <h2 className="text-white font-semibold text-base">Past Sales</h2>
           <p className="text-[#6b7280] text-xs mt-0.5">{transactions.length} transaction{transactions.length !== 1 ? 's' : ''} · {canModify ? 'manager — can mark returns' : 'view only'}</p>
         </div>
+
+        {/* Date filter */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => setShowAll(a => !a)}
+            className={`text-xs px-3 py-2 rounded-lg border font-medium transition-all ${showAll ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#2a2a45] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+            All
+          </button>
+          {!showAll && (
+            <>
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+                className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+              <span className="text-[#6b7280] text-xs">to</span>
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+                className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+              {(dateFrom !== today || dateTo !== today) && (
+                <button onClick={() => { setDateFrom(today); setDateTo(today) }}
+                  className="text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                  Today
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3">
+            <p className="text-[#6b7280] text-xs">Transactions</p>
+            <p className="text-white text-xl font-bold mt-0.5">{filteredTxns.length}</p>
+          </div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3">
+            <p className="text-[#6b7280] text-xs">Books Sold</p>
+            <p className="text-white text-xl font-bold mt-0.5">{totalQty}</p>
+          </div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3">
+            <p className="text-[#6b7280] text-xs">Revenue</p>
+            <p className="text-[#f0a500] text-xl font-bold mt-0.5">₹{totalRevenue.toFixed(0)}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[#6b7280] text-xs">Cash</p>
+              <p className="text-white text-lg font-bold mt-0.5">₹{cashRevenue.toFixed(0)}</p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-[#2a2a45] text-[#9ca3af] border border-[#2a2a45]">Cash</span>
+          </div>
+          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-[#6b7280] text-xs">Online</p>
+              <p className="text-white text-lg font-bold mt-0.5">₹{onlineRevenue.toFixed(0)}</p>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">Online</span>
+          </div>
+        </div>
+
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
           <input value={salesSearch} onChange={e => setSalesSearch(e.target.value)} placeholder="Search by buyer, book, phone or sold by..."
