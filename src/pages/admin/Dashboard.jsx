@@ -1,8 +1,8 @@
 import { useRealtime } from '../../hooks/useRealtime'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package } from 'lucide-react'
+import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package, Search } from 'lucide-react'
 import { format } from 'date-fns'
 
 const MODAL_META = {
@@ -37,19 +37,42 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
   )
 }
 
+function getRowSearchText(type, row) {
+  if (type === 'students' || type === 'newStudents' || type === 'bags')
+    return `${row.name} ${row.student_id} ${row.batches?.name || ''} ${row.batches?.batch_code || ''}`.toLowerCase()
+  if (type === 'books')
+    return `${row.title} ${row.exam_level || ''} ${row.unit || ''} ${row.part || ''} ${row.medium || ''}`.toLowerCase()
+  if (type === 'issuedToday')
+    return `${row.books?.title || ''} ${row.books?.exam_level || ''} ${row.books?.unit || ''} ${row.students?.name || ''} ${row.students?.student_id || ''} ${row.users?.name || ''}`.toLowerCase()
+  if (type === 'salesToday')
+    return `${row.books?.title || ''} ${row.books?.exam_level || ''} ${row.books?.unit || ''} ${row.buyer_name || ''} ${row.users?.name || ''}`.toLowerCase()
+  if (type === 'lowStock')
+    return `${row.books?.title || ''} ${row.books?.exam_level || ''} ${row.books?.unit || ''} ${row.books?.medium || ''} ${row.books?.category || ''}`.toLowerCase()
+  return ''
+}
+
 function DetailModal({ type, onClose }) {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     if (!type) return
     setLoading(true)
     setRows([])
+    setQuery('')
     fetchData(type).then(data => { setRows(data); setLoading(false) })
   }, [type])
 
+  const filtered = useMemo(() => {
+    if (!query.trim()) return rows
+    const q = query.toLowerCase()
+    return rows.filter(row => getRowSearchText(type, row).includes(q))
+  }, [rows, query, type])
+
   if (!type) return null
   const meta = MODAL_META[type]
+  const showSearch = rows.length > 5
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={onClose}>
@@ -61,18 +84,36 @@ function DetailModal({ type, onClose }) {
           <div className="flex items-center gap-2">
             <meta.Icon size={16} className={meta.color} />
             <h2 className="text-white font-semibold">{meta.title}</h2>
-            {!loading && <span className="text-[#6b7280] text-xs">({rows.length})</span>}
+            {!loading && (
+              <span className="text-[#6b7280] text-xs">
+                ({query.trim() ? `${filtered.length}/${rows.length}` : rows.length})
+              </span>
+            )}
           </div>
           <button onClick={onClose} className="text-[#6b7280] hover:text-white p-1"><X size={16} /></button>
         </div>
 
+        {showSearch && !loading && (
+          <div className="relative mb-3 flex-shrink-0">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
+            <input
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search..."
+              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-sm placeholder-[#4b5563] focus:outline-none focus:border-[#3a3a55]"
+              autoFocus
+            />
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto space-y-2 min-h-0">
           {loading ? (
             [...Array(5)].map((_, i) => <div key={i} className="h-12 bg-[#2a2a45] rounded-lg animate-pulse" />)
-          ) : rows.length === 0 ? (
-            <p className="text-[#6b7280] text-sm text-center py-8">No data found</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-[#6b7280] text-sm text-center py-8">{query.trim() ? 'No results found' : 'No data found'}</p>
           ) : (
-            rows.map((row, i) => <RowItem key={i} type={type} row={row} index={i} />)
+            filtered.map((row, i) => <RowItem key={i} type={type} row={row} index={i} />)
           )}
         </div>
       </div>
@@ -115,8 +156,8 @@ function RowItem({ type, row, index }) {
               {[row.exam_level, row.unit, row.part].filter(Boolean).join(' › ')}
             </p>
           )}
-          {row.language && (
-            <p className="text-[#4b5563] text-xs">{row.language}</p>
+          {row.medium && (
+            <p className="text-[#4b5563] text-xs capitalize">{row.medium}</p>
           )}
         </div>
       </div>
@@ -235,7 +276,7 @@ async function fetchData(type) {
     }
     case 'books': {
       const { data } = await supabase
-        .from('books').select('title, exam_level, unit, part, language')
+        .from('books').select('title, exam_level, unit, part, medium')
         .eq('is_active', true).order('title')
       return data || []
     }
