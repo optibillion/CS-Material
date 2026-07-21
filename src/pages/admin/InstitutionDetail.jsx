@@ -166,7 +166,6 @@ export default function InstitutionDetail() {
   const [issueOpen, setIssueOpen] = useState(false)
   const [slipModal, setSlipModal] = useState(null)
   const [reverseModal, setReverseModal] = useState(null)
-  const [reverseRestoreStock, setReverseRestoreStock] = useState(true)
   const [reversing, setReversing] = useState(false)
   const [editDateModal, setEditDateModal] = useState(null)
   const [editDateValue, setEditDateValue] = useState('')
@@ -312,34 +311,30 @@ export default function InstitutionDetail() {
           await supabase.from('allotments').update({ qty: b.qty - reverseQty })
             .eq('institution_id', id).eq('allotted_at', batch.allotted_at).eq('book_id', b.book_id)
         }
-        if (reverseRestoreStock) {
-          const entry = stockEntries.find(e => e.book_id === b.book_id)
-          if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + reverseQty }).eq('id', entry.id)
-        }
+        const entry = stockEntries.find(e => e.book_id === b.book_id)
+        if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + reverseQty }).eq('id', entry.id)
       }
       const bookList = booksToReverse.map(b => {
         const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
         return `${lvl || b.title} ×${partialReverseQtys[b.book_id]}`
       }).join(', ')
-      logAction('ALLOTMENT_PARTIAL_REVERSED', `${institution.name} — partial reversal (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList}${reverseRestoreStock ? ' [stock restored]' : ''}`)
+      logAction('ALLOTMENT_PARTIAL_REVERSED', `${institution.name} — partial reversal (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList} [stock restored]`)
       toast.success('Partial reversal done')
     } else {
       const { error: delError } = await supabase
         .from('allotments').delete()
         .eq('institution_id', id).eq('allotted_at', batch.allotted_at)
       if (delError) { toast.error('Failed to reverse: ' + delError.message); setReversing(false); return }
-      if (reverseRestoreStock) {
-        for (const b of batch.books) {
-          if (!b.book_id) continue
-          const entry = stockEntries.find(e => e.book_id === b.book_id)
-          if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + b.qty }).eq('id', entry.id)
-        }
+      for (const b of batch.books) {
+        if (!b.book_id) continue
+        const entry = stockEntries.find(e => e.book_id === b.book_id)
+        if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + b.qty }).eq('id', entry.id)
       }
       const bookList = batch.books.map(b => {
         const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
         return `${lvl || b.title} ×${b.qty}`
       }).join(', ')
-      logAction('ALLOTMENT_REVERSED', `${institution.name} — ${batch.books.length} book(s) reversed (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList}${reverseRestoreStock ? ' [stock restored]' : ''}`)
+      logAction('ALLOTMENT_REVERSED', `${institution.name} — ${batch.books.length} book(s) reversed (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList} [stock restored]`)
       toast.success('Allotment reversed')
     }
 
@@ -672,9 +667,6 @@ export default function InstitutionDetail() {
                     {batch.totalValue > 0 && (
                       <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
                     )}
-                    <p className={`text-xs mt-0.5 font-medium ${batch.stock_deducted === true ? 'text-orange-400' : batch.stock_deducted === false ? 'text-[#4b5563]' : 'text-yellow-600'}`}>
-                      {batch.stock_deducted === true ? '📦 Stock was deducted' : batch.stock_deducted === false ? '📦 Stock was NOT deducted' : '📦 Stock deduction unknown (old record)'}
-                    </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                     <button
@@ -701,7 +693,7 @@ export default function InstitutionDetail() {
                     )}
                     {isAdmin && (
                       <button
-                        onClick={() => { setReverseRestoreStock(batch.stock_deducted !== false); setPartialReverseMode(false); setPartialReverseQtys({}); setReverseModal(batch) }}
+                        onClick={() => { setPartialReverseMode(false); setPartialReverseQtys({}); setReverseModal(batch) }}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
                         <RotateCcw size={12} />
                         Reverse
@@ -924,21 +916,10 @@ export default function InstitutionDetail() {
             </div>
 
             {partialReverseMode && (
-              <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 mb-3 text-xs text-orange-300">
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 mb-4 text-xs text-orange-300">
                 Set each book's "take back" qty. 0 = keep as-is. Remaining copies stay in the allotment.
               </div>
             )}
-
-            <div className={`px-3 py-2 rounded-lg mb-3 text-xs font-semibold ${reverseModal.stock_deducted === true ? 'bg-orange-500/10 text-orange-400' : reverseModal.stock_deducted === false ? 'bg-[#12121f] text-[#4b5563]' : 'bg-yellow-500/10 text-yellow-500'}`}>
-              {reverseModal.stock_deducted === true ? '📦 Stock WAS deducted when this was issued' : reverseModal.stock_deducted === false ? '📦 Stock was NOT deducted when this was issued' : '📦 Unknown — old record, check manually'}
-            </div>
-            <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border cursor-pointer transition-all mb-5 ${reverseRestoreStock ? 'bg-orange-500/10 border-orange-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
-              <input type="checkbox" checked={reverseRestoreStock} onChange={e => setReverseRestoreStock(e.target.checked)} className="accent-[#f0a500] w-4 h-4 flex-shrink-0" />
-              <div>
-                <p className="text-white text-sm font-medium">Restore stock</p>
-                <p className="text-[#6b7280] text-xs">Add {partialReverseMode ? 'reversed' : ''} quantities back to inventory</p>
-              </div>
-            </label>
             <div className="flex gap-3">
               <button onClick={() => setReverseModal(null)} disabled={reversing}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">
@@ -946,7 +927,7 @@ export default function InstitutionDetail() {
               </button>
               <button onClick={handleReverseBatch} disabled={reversing}
                 className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-50 text-white ${partialReverseMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                {reversing ? 'Reversing…' : partialReverseMode ? 'Partial Reverse' : 'Yes, Reverse All'}
+                {reversing ? 'Reversing…' : partialReverseMode ? 'Confirm Partial' : 'Yes, Reverse All'}
               </button>
             </div>
           </div>
