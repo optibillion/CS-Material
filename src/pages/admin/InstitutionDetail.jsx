@@ -476,7 +476,7 @@ export default function InstitutionDetail() {
   )
   const selectedBooks = books.filter(b => parseInt(qtyMap[b.id] || 0) > 0)
 
-  function openIssue() { setQtyMap({}); setDiscountPct(0); setExamFilter('all'); setUnitFilter('all'); setIssueDate(today); setIssueOpen(true) }
+  function openIssue() { setQtyMap({}); setDiscountPct(60); setExamFilter('all'); setUnitFilter('all'); setIssueDate(today); setIssueOpen(true) }
 
   async function handleIssue() {
     if (selectedBooks.length === 0) { toast.error('Select at least one book with quantity'); return }
@@ -1091,24 +1091,30 @@ export default function InstitutionDetail() {
                 </div>
               )}
 
-              <div className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${discountPct > 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
-                <div className="flex-1">
-                  <p className="text-white text-sm font-medium">Distributor Discount</p>
-                  <p className="text-[#6b7280] text-xs">0% = full MRP · 100% = free</p>
+              {isAdmin ? (
+                <div className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all ${discountPct > 0 ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-[#12121f] border-[#2a2a45]'}`}>
+                  <div className="flex-1">
+                    <p className="text-white text-sm font-medium">Distributor Discount</p>
+                    <p className="text-[#6b7280] text-xs">0% = full MRP · 100% = free</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <input
+                      type="number" min="0" max="100" placeholder="0"
+                      value={discountPct || ''}
+                      onChange={e => {
+                        const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
+                        setDiscountPct(v)
+                      }}
+                      className="w-16 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:border-emerald-500"
+                    />
+                    <span className="text-white text-sm font-bold">%</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <input
-                    type="number" min="0" max="100" placeholder="0"
-                    value={discountPct || ''}
-                    onChange={e => {
-                      const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0))
-                      setDiscountPct(v)
-                    }}
-                    className="w-16 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:border-emerald-500"
-                  />
-                  <span className="text-white text-sm font-bold">%</span>
+              ) : (
+                <div className="flex items-center justify-between px-3 py-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <p className="text-emerald-400 text-sm font-medium">60% distributor discount applied</p>
                 </div>
-              </div>
+              )}
 
               {selectedBooks.length > 0 && selectedBooks.some(b => b.mrp) && (
                 <div className="bg-[#12121f] rounded-lg px-3 py-2 flex items-center justify-between">
