@@ -5,6 +5,12 @@ import { useAuthStore } from '../../store/authStore'
 import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package, Search } from 'lucide-react'
 import { format } from 'date-fns'
 
+function safeFormat(dateStr, fmt) {
+  if (!dateStr) return '—'
+  const d = new Date(dateStr)
+  return isNaN(d.getTime()) ? '—' : format(d, fmt)
+}
+
 const MODAL_META = {
   students:    { title: 'All Students',        Icon: Users,         color: 'text-blue-400' },
   books:       { title: 'Active Books',         Icon: BookOpen,      color: 'text-[#bd0a0a]' },
@@ -61,7 +67,9 @@ function DetailModal({ type, onClose }) {
     setLoading(true)
     setRows([])
     setQuery('')
-    fetchData(type).then(data => { setRows(data); setLoading(false) })
+    fetchData(type)
+      .then(data => { setRows(data); setLoading(false) })
+      .catch(() => setLoading(false))
   }, [type])
 
   const filtered = useMemo(() => {
@@ -137,7 +145,7 @@ function RowItem({ type, row, index }) {
             </p>
           )}
           {type === 'newStudents' && (
-            <p className="text-[#4b5563] text-xs">{format(new Date(row.created_at), 'hh:mm a')}</p>
+            <p className="text-[#4b5563] text-xs">{safeFormat(row.created_at, 'hh:mm a')}</p>
           )}
         </div>
         <span className="text-[#6b7280] text-xs font-mono flex-shrink-0">{row.student_id}</span>
@@ -182,7 +190,7 @@ function RowItem({ type, row, index }) {
           <p className="text-[#6b7280] text-xs">{row.students?.name} · {row.students?.student_id}</p>
           <p className="text-[#4b5563] text-xs">by {row.users?.name || '—'}</p>
         </div>
-        <span className="text-[#6b7280] text-xs flex-shrink-0">{format(new Date(row.issued_at), 'hh:mm a')}</span>
+        <span className="text-[#6b7280] text-xs flex-shrink-0">{safeFormat(row.issued_at, 'hh:mm a')}</span>
       </div>
     )
   }
@@ -209,7 +217,7 @@ function RowItem({ type, row, index }) {
         </div>
         <div className="text-right flex-shrink-0">
           {row.total_price && <p className="text-[#f0a500] text-sm font-semibold">₹{row.total_price}</p>}
-          <p className="text-[#6b7280] text-xs">{format(new Date(row.sold_at), 'hh:mm a')}</p>
+          <p className="text-[#6b7280] text-xs">{safeFormat(row.sold_at, 'hh:mm a')}</p>
         </div>
       </div>
     )
@@ -426,10 +434,10 @@ export default function Dashboard() {
                     <p className="text-white text-sm font-medium truncate">{i.books?.title}</p>
                   )}
                   <p className="text-[#6b7280] text-xs mt-0.5">{i.students?.name} · {i.students?.student_id}</p>
-                  <p className="text-[#6b7280] text-xs">by {i.users?.name || '—'} · {format(new Date(i.issued_at), 'hh:mm a')}</p>
+                  <p className="text-[#6b7280] text-xs">by {i.users?.name || '—'} · {safeFormat(i.issued_at, 'hh:mm a')}</p>
                 </div>
                 <span className="text-[#6b7280] text-xs whitespace-nowrap ml-3 flex-shrink-0">
-                  {format(new Date(i.issued_at), 'dd MMM')}
+                  {safeFormat(i.issued_at, 'dd MMM')}
                 </span>
               </div>
             ))}
