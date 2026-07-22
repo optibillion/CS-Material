@@ -75,7 +75,7 @@ export default function Allotments() {
     setLoading(true)
     const { data } = await supabase
       .from('institutions')
-      .select('*, allotments(qty)')
+      .select('*, allotments(qty, unit_mrp, discount_pct)')
       .order('created_at', { ascending: false })
     setInstitutions(data || [])
     setLoading(false)
@@ -136,6 +136,12 @@ export default function Allotments() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(inst => {
             const totalQty = (inst.allotments || []).reduce((s, a) => s + (a.qty || 0), 0)
+            const totalValue = (inst.allotments || []).reduce((s, a) => {
+              const mrp = a.unit_mrp || 0
+              const disc = a.discount_pct || 0
+              return s + +(mrp * (1 - disc / 100)).toFixed(2) * (a.qty || 1)
+            }, 0)
+            const hasValue = totalValue > 0
             return (
               <button key={inst.id} onClick={() => navigate(`${basePath}/allotments/${inst.id}`)}
                 className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 text-left hover:border-[#bd0a0a]/50 hover:bg-[#1f1f35] transition-all group">
@@ -143,9 +149,16 @@ export default function Allotments() {
                   <div className="w-10 h-10 rounded-lg bg-[#bd0a0a]/10 flex items-center justify-center flex-shrink-0">
                     <Building2 size={20} className="text-[#bd0a0a]" />
                   </div>
-                  <span className="text-xs bg-[#2a2a45] text-[#9ca3af] px-2 py-0.5 rounded-full">
-                    {totalQty} books sent
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-xs bg-[#2a2a45] text-[#9ca3af] px-2 py-0.5 rounded-full">
+                      {totalQty} books sent
+                    </span>
+                    {hasValue && (
+                      <span className="text-xs text-[#f0a500] font-semibold">
+                        ₹{Math.round(totalValue).toLocaleString('en-IN')}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <p className="text-white font-semibold text-sm group-hover:text-white truncate">{inst.name}</p>
                 {inst.location && (
