@@ -75,7 +75,7 @@ export default function Allotments() {
     setLoading(true)
     const { data } = await supabase
       .from('institutions')
-      .select('*, allotments(qty, unit_mrp, discount_pct)')
+      .select('*, allotments(qty, unit_mrp, discount_pct, books(mrp))')
       .order('created_at', { ascending: false })
     setInstitutions(data || [])
     setLoading(false)
@@ -137,7 +137,7 @@ export default function Allotments() {
           {filtered.map(inst => {
             const totalQty = (inst.allotments || []).reduce((s, a) => s + (a.qty || 0), 0)
             const totalValue = (inst.allotments || []).reduce((s, a) => {
-              const mrp = a.unit_mrp || 0
+              const mrp = a.unit_mrp ?? a.books?.mrp ?? 0
               const disc = a.discount_pct || 0
               return s + +(mrp * (1 - disc / 100)).toFixed(2) * (a.qty || 1)
             }, 0)
