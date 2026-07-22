@@ -49,7 +49,7 @@ function getRowSearchText(type, row) {
   if (type === 'books')
     return `${row.title} ${row.exam_level || ''} ${row.unit || ''} ${row.part || ''} ${row.medium || ''}`.toLowerCase()
   if (type === 'issuedToday')
-    return `${row.books?.title || ''} ${row.books?.exam_level || ''} ${row.books?.unit || ''} ${row.students?.name || ''} ${row.students?.student_id || ''} ${row.users?.name || ''}`.toLowerCase()
+    return `${row.student?.name || ''} ${row.student?.student_id || ''} ${row.issuedBy?.name || ''} ${row.books?.map(b => `${b.title} ${b.exam_level || ''} ${b.unit || ''}`).join(' ') || ''}`.toLowerCase()
   if (type === 'salesToday')
     return `${row.books?.title || ''} ${row.books?.exam_level || ''} ${row.books?.unit || ''} ${row.buyer_name || ''} ${row.users?.name || ''}`.toLowerCase()
   if (type === 'lowStock')
@@ -177,20 +177,13 @@ function RowItem({ type, row, index }) {
       <div className="flex items-start gap-3 px-3 py-2.5 bg-[#12121f] rounded-lg">
         {num}
         <div className="flex-1 min-w-0">
-          {(row.books?.exam_level || row.books?.unit || row.books?.part) ? (
-            <>
-              <p className="text-white text-sm font-medium truncate">
-                {[row.books?.exam_level, row.books?.unit, row.books?.part].filter(Boolean).join(' › ')}
-              </p>
-              <p className="text-[#6b7280] text-xs truncate">{row.books?.title}</p>
-            </>
-          ) : (
-            <p className="text-white text-sm font-medium truncate">{row.books?.title}</p>
-          )}
-          <p className="text-[#6b7280] text-xs">{row.students?.name} · {row.students?.student_id}</p>
-          <p className="text-[#4b5563] text-xs">by {row.users?.name || '—'}</p>
+          <p className="text-white text-sm font-medium truncate">{row.student?.name}</p>
+          <p className="text-[#6b7280] text-xs font-mono">{row.student?.student_id}</p>
+          <p className="text-[#4b5563] text-xs mt-0.5">
+            {row.books.length} book{row.books.length !== 1 ? 's' : ''} · by {row.issuedBy?.name || '—'}
+          </p>
         </div>
-        <span className="text-[#6b7280] text-xs flex-shrink-0">{safeFormat(row.issued_at, 'hh:mm a')}</span>
+        <span className="text-[#6b7280] text-xs flex-shrink-0">{safeFormat(row.issuedAt, 'hh:mm a')}</span>
       </div>
     )
   }
@@ -291,10 +284,16 @@ async function fetchData(type) {
     case 'issuedToday': {
       const { data } = await supabase
         .from('issuances')
-        .select('id, issued_at, students(name, student_id), books(title, exam_level, unit, part), users!issuances_issued_by_fkey(name)')
+        .select('student_id, issued_at, students(name, student_id), books(title, exam_level, unit, part), users!issuances_issued_by_fkey(name)')
         .gte('issued_at', todayISO).eq('is_reversed', false)
         .order('issued_at', { ascending: false })
-      return data || []
+      const grouped = {}
+      for (const row of data || []) {
+        const key = row.student_id
+        if (!grouped[key]) grouped[key] = { student: row.students, issuedBy: row.users, issuedAt: row.issued_at, books: [] }
+        if (row.books) grouped[key].books.push(row.books)
+      }
+      return Object.values(grouped)
     }
     case 'salesToday': {
       const { data } = await supabase
@@ -351,7 +350,7 @@ export default function Dashboard() {
     const [
       { count: totalStudents },
       { count: totalBooks },
-      { count: issuedToday },
+      { data: issuedTodayData },
       { count: salesToday },
       { count: newStudentsToday },
       { count: bagsIssued },
@@ -360,7 +359,7 @@ export default function Dashboard() {
     ] = await Promise.all([
       supabase.from('students').select('*', { count: 'exact', head: true }),
       supabase.from('books').select('*', { count: 'exact', head: true }).eq('is_active', true),
-      supabase.from('issuances').select('*', { count: 'exact', head: true }).gte('issued_at', todayISO).eq('is_reversed', false),
+      supabase.from('issuances').select('student_id').gte('issued_at', todayISO).eq('is_reversed', false),
       supabase.from('sales').select('*', { count: 'exact', head: true }).gte('sold_at', todayISO).eq('is_returned', false),
       supabase.from('students').select('*', { count: 'exact', head: true }).gte('created_at', todayISO),
       supabase.from('students').select('*', { count: 'exact', head: true }).eq('bag_issued', true),
@@ -372,6 +371,7 @@ export default function Dashboard() {
       supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)')
     ])
 
+    const issuedToday = new Set((issuedTodayData || []).map(r => r.student_id)).size
     setStats({ totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued })
     setRecentIssuances(recentData || [])
     setLowStock(stockData?.filter(s => s.available_qty <= s.low_stock_threshold) || [])
