@@ -334,3 +334,104 @@ export function saveSlipFile(blob, distributorName) {
   const filename = `Distributor-Slip-${distributorName.replace(/\s+/g, '-')}.pdf`
   downloadBlob(blob, filename)
 }
+
+function buildGrandTotalBillHTML(data) {
+  const { distributor_name, distributor_location, distributor_phone, batches, generated_at } = data
+  const date = format(new Date(generated_at || new Date()), 'dd MMM yyyy, hh:mm a')
+
+  const sorted = batches.slice().sort((a, b) => new Date(a.allotted_at) - new Date(b.allotted_at))
+  const grandQty = sorted.reduce((s, batch) => s + batch.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const grandTotal = sorted.reduce((sum, batch) => {
+    const disc = batch.discount_pct || 0
+    return sum + batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - disc / 100)).toFixed(2) * (b.qty || 1), 0)
+  }, 0)
+  const hasAnyPricing = sorted.some(batch => batch.books.some(b => (b.unit_mrp || 0) > 0))
+
+  const batchSections = sorted.map((batch, bi) => {
+    const batchDate = format(new Date(batch.allotted_at), 'dd MMM yyyy')
+    const discPct = batch.discount_pct || 0
+    const batchHasPrice = batch.books.some(b => (b.unit_mrp || 0) > 0)
+    const batchOriginal = batch.books.reduce((s, b) => s + (b.unit_mrp || 0) * (b.qty || 1), 0)
+    const batchFinal = batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - discPct / 100)).toFixed(2) * (b.qty || 1), 0)
+
+    return `<div style="margin-bottom:20px">
+      <div style="background:#f7f7f7;border-radius:6px;padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:700;color:#bd0a0a;text-transform:uppercase;letter-spacing:1px">${batchDate}</span>
+        ${discPct > 0 ? `<span style="font-size:10px;background:#16a34a;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">${discPct}% off</span>` : ''}
+      </div>
+      ${batch.books.map((b, i) => allotmentBookRowHTML(b, i, discPct)).join('')}
+      ${batchHasPrice ? `<div style="display:flex;justify-content:flex-end;padding:6px 0 2px;margin-top:2px">
+        <div style="text-align:right">
+          ${discPct > 0 ? `<span style="font-size:11px;color:#aaa;text-decoration:line-through;margin-right:8px">₹${fmt(batchOriginal)}</span>` : ''}
+          <span style="font-size:13px;font-weight:700;color:#555">Subtotal: <span style="color:#bd0a0a">₹${fmt(batchFinal)}</span></span>
+        </div>
+      </div>` : ''}
+    </div>${bi < sorted.length - 1 ? RULER : ''}`
+  }).join('')
+
+  const body = `
+  <div style="padding:36px 48px 0;flex:1">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:0">
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;width:120px;vertical-align:top">Generated</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${date}</td></tr>
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Distributor</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_name}</td></tr>
+      ${distributor_location ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Location</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_location}</td></tr>` : ''}
+      ${distributor_phone ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Phone</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_phone}</td></tr>` : ''}
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Summary</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${sorted.length} batch${sorted.length !== 1 ? 'es' : ''} · ${grandQty} copies</td></tr>
+    </table>
+    ${RULER}
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#bd0a0a;margin-bottom:8px">All Dispatches</div>
+    <div>${batchSections}</div>
+    <div style="border-top:2px solid #1a1a1a;margin-top:16px"></div>
+    ${hasAnyPricing ? `
+    <div style="padding:10px 0 4px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">Grand Total</span>
+        <span style="font-size:26px;font-weight:800;color:#bd0a0a">₹${fmt(Math.round(grandTotal))}</span>
+      </div>
+    </div>
+    <div style="border-top:2px solid #1a1a1a"></div>
+    ` : `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+      <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">Total Copies</span>
+      <span style="font-size:26px;font-weight:800;color:#bd0a0a">${grandQty}</span>
+    </div>
+    <div style="border-top:2px solid #1a1a1a"></div>
+    `}
+  </div>
+  <div style="padding:28px 48px 36px;text-align:center">
+    ${RULER}
+    <div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px">Champion Square Notes</div>
+    <div style="font-size:10px;color:#aaa;margin-bottom:6px">For queries, contact Champion Square.</div>
+    <div style="font-size:10px;font-weight:700;color:#bd0a0a;letter-spacing:1px">Excellence · Experience · Trust</div>
+  </div>`
+
+  return pageShell('Grand Total Bill — Champion Square', 'GRAND TOTAL BILL', body)
+}
+
+export async function generateGrandTotalBillBlob(data) {
+  return generatePDFFromHTML(buildGrandTotalBillHTML(data))
+}
+
+export async function downloadGrandTotalBill(blob, distributorName) {
+  const filename = `Grand-Bill-${distributorName.replace(/\s+/g, '-')}.pdf`
+  const file = new File([blob], filename, { type: 'application/pdf' })
+  try {
+    if (navigator.share) {
+      await navigator.share({ files: [file], title: `Grand Total Bill — ${distributorName}` })
+    } else {
+      downloadBlob(blob, filename)
+    }
+  } catch (e) {
+    if (e?.name !== 'AbortError') downloadBlob(blob, filename)
+  }
+}
+
+export function saveGrandBillFile(blob, distributorName) {
+  const filename = `Grand-Bill-${distributorName.replace(/\s+/g, '-')}.pdf`
+  downloadBlob(blob, filename)
+}

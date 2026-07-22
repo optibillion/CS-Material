@@ -3,11 +3,11 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
 import { useAuthStore } from '../../store/authStore'
-import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw, CalendarDays, ArrowLeftRight, Search, Percent } from 'lucide-react'
+import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw, CalendarDays, ArrowLeftRight, Search, Percent, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
-import { generateAllotmentSlipBlob, downloadAllotmentSlip, saveSlipFile } from '../../lib/receipt'
+import { generateAllotmentSlipBlob, downloadAllotmentSlip, saveSlipFile, generateGrandTotalBillBlob, downloadGrandTotalBill, saveGrandBillFile } from '../../lib/receipt'
 
 function WhatsAppIcon() {
   return (
@@ -78,6 +78,90 @@ function AllotmentSlipModal({ slipData, onClose }) {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => pdfBlob && saveSlipFile(pdfBlob, slipData.distributor_name)}
+            disabled={!pdfBlob}
+            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all disabled:opacity-50">
+            <Download size={20} />
+            <span className="text-sm font-medium">{pdfBlob ? 'Download' : 'Preparing…'}</span>
+          </button>
+          <button
+            onClick={handleShare}
+            disabled={sharing}
+            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#25D366] hover:bg-[#1fb857] disabled:opacity-70 text-white transition-all">
+            {sharing ? <Loader2 size={20} className="animate-spin" /> : <WhatsAppIcon />}
+            <span className="text-sm font-semibold">
+              {sharing ? 'Preparing...' : 'WhatsApp'}
+            </span>
+          </button>
+        </div>
+
+        {!pdfBlob && !sharing && (
+          <p className="text-[#4b5563] text-[10px] text-center mt-2">Preparing PDF in background…</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function GrandTotalBillModal({ data, onClose }) {
+  const [pdfBlob, setPdfBlob] = useState(null)
+  const [sharing, setSharing] = useState(false)
+  const sharingRef = useRef(false)
+
+  useEffect(() => {
+    if (!data) return
+    setPdfBlob(null)
+    generateGrandTotalBillBlob(data)
+      .then(blob => setPdfBlob(blob))
+      .catch(() => {})
+  }, [data])
+
+  if (!data) return null
+
+  const grandQty = data.batches.reduce((s, batch) => s + batch.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const grandTotal = data.batches.reduce((sum, batch) => {
+    const disc = batch.discount_pct || 0
+    return sum + batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - disc / 100)).toFixed(2) * (b.qty || 1), 0)
+  }, 0)
+  const hasPricing = data.batches.some(batch => batch.books.some(b => (b.unit_mrp || 0) > 0))
+
+  async function handleShare() {
+    if (sharingRef.current) return
+    sharingRef.current = true
+    setSharing(true)
+    try {
+      const blob = pdfBlob || await generateGrandTotalBillBlob(data)
+      await downloadGrandTotalBill(blob, data.distributor_name)
+    } catch {
+      toast.error('Could not generate bill')
+    } finally {
+      sharingRef.current = false
+      setSharing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6">
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <p className="text-white font-semibold text-sm">{data.distributor_name}</p>
+            <p className="text-[#6b7280] text-xs mt-0.5">
+              Grand Total Bill · {data.batches.length} batch{data.batches.length !== 1 ? 'es' : ''} · {grandQty} copies
+            </p>
+            {hasPricing && (
+              <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">
+                Grand Total: ₹{Math.round(grandTotal)}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-[#6b7280] hover:text-white p-1.5 rounded-lg hover:bg-[#2a2a45] transition-all flex-shrink-0 ml-3">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => pdfBlob && saveGrandBillFile(pdfBlob, data.distributor_name)}
             disabled={!pdfBlob}
             className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all disabled:opacity-50">
             <Download size={20} />
@@ -179,6 +263,7 @@ export default function InstitutionDetail() {
   const [editingDiscount, setEditingDiscount] = useState(false)
   const [partialReverseMode, setPartialReverseMode] = useState(false)
   const [partialReverseQtys, setPartialReverseQtys] = useState({}) // { bookId: number }
+  const [grandBillData, setGrandBillData] = useState(null)
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -572,7 +657,19 @@ export default function InstitutionDetail() {
               {institution.notes && <p className="text-[#6b7280] text-xs mt-1">{institution.notes}</p>}
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+            {batches.length > 0 && (
+              <button onClick={() => setGrandBillData({
+                distributor_name: institution.name,
+                distributor_location: institution.location,
+                distributor_phone: institution.phone,
+                batches,
+                generated_at: new Date().toISOString(),
+              })}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                <FileText size={12} /> Grand Bill
+              </button>
+            )}
             {(isAdmin || allotmentAccess === 'edit') && (
               <button onClick={() => setEditOpen(true)}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
@@ -761,6 +858,9 @@ export default function InstitutionDetail() {
 
       {/* Allotment slip modal */}
       <AllotmentSlipModal slipData={slipModal} onClose={() => setSlipModal(null)} />
+
+      {/* Grand total bill modal */}
+      <GrandTotalBillModal data={grandBillData} onClose={() => setGrandBillData(null)} />
 
       {/* Edit batch date modal — admin only */}
       {editDateModal && (
