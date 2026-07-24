@@ -69,10 +69,11 @@ export default function SalesView() {
     )
   })
 
-  const dayTotalQty = filteredTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
-  const dayTotalRevenue = filteredTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const cashRevenue = filteredTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const onlineRevenue = filteredTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const activeTxns = filteredTxns.filter(t => !t.all_returned)
+  const dayTotalQty = activeTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const dayTotalRevenue = activeTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const cashRevenue = activeTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const onlineRevenue = activeTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
 
   return (
     <div className="p-4 md:p-6 space-y-5">

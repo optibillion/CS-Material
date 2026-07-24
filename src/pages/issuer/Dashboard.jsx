@@ -16,12 +16,13 @@ export default function IssuerDashboard() {
   async function fetchAll() {
     setLoading(true)
     const today = new Date(); today.setHours(0,0,0,0)
-    const [{ count: myToday }, { count: totalStudents }, { count: mySales }, { data: recentData }] = await Promise.all([
-      supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('issued_by', profile?.id).gte('issued_at', today.toISOString()),
+    const [{ count: myToday }, { count: totalStudents }, { data: salesQtyData }, { data: recentData }] = await Promise.all([
+      supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('issued_by', profile?.id).gte('issued_at', today.toISOString()).eq('is_reversed', false),
       supabase.from('students').select('*', { count: 'exact', head: true }),
-      supabase.from('sales').select('*', { count: 'exact', head: true }).eq('sold_by', profile?.id),
+      supabase.from('sales').select('qty').eq('sold_by', profile?.id).eq('is_returned', false),
       supabase.from('issuances').select('*, students(name, student_id), books(title)').eq('issued_by', profile?.id).order('issued_at', { ascending: false }).limit(6)
     ])
+    const mySales = (salesQtyData || []).reduce((sum, row) => sum + (row.qty || 1), 0)
     setStats({ myToday, totalStudents, mySales })
     setRecent(recentData || [])
     setLoading(false)

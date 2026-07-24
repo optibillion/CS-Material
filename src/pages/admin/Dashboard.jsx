@@ -351,7 +351,7 @@ export default function Dashboard() {
       { count: totalStudents },
       { count: totalBooks },
       { data: issuedTodayData },
-      { count: salesToday },
+      { data: salesTodayQtyData },
       { count: newStudentsToday },
       { count: bagsIssued },
       { data: recentData },
@@ -360,7 +360,7 @@ export default function Dashboard() {
       supabase.from('students').select('*', { count: 'exact', head: true }),
       supabase.from('books').select('*', { count: 'exact', head: true }).eq('is_active', true),
       supabase.from('issuances').select('student_id').gte('issued_at', todayISO).eq('is_reversed', false),
-      supabase.from('sales').select('*', { count: 'exact', head: true }).gte('sold_at', todayISO).eq('is_returned', false),
+      supabase.from('sales').select('qty').gte('sold_at', todayISO).eq('is_returned', false),
       supabase.from('students').select('*', { count: 'exact', head: true }).gte('created_at', todayISO),
       supabase.from('students').select('*', { count: 'exact', head: true }).eq('bag_issued', true),
       supabase.from('issuances')
@@ -372,6 +372,7 @@ export default function Dashboard() {
     ])
 
     const issuedToday = new Set((issuedTodayData || []).map(r => r.student_id)).size
+    const salesToday = (salesTodayQtyData || []).reduce((sum, r) => sum + (r.qty || 1), 0)
     setStats({ totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued })
     setRecentIssuances(recentData || [])
     setLowStock(stockData?.filter(s => s.available_qty <= s.low_stock_threshold) || [])
@@ -397,8 +398,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           <StatCard icon={Users}         label="Total Students"      value={stats.totalStudents}    sub="All time"           color="bg-blue-600"    onClick={() => setModalType('students')} />
           <StatCard icon={BookOpen}      label="Active Books"         value={stats.totalBooks}       sub="In catalogue"       color="bg-[#bd0a0a]"   onClick={() => setModalType('books')} />
-          <StatCard icon={Send}          label="Issued Today"         value={stats.issuedToday}      sub="Books distributed"  color="bg-emerald-600" onClick={() => setModalType('issuedToday')} />
-          <StatCard icon={ShoppingCart}  label="Sales Today"          value={stats.salesToday}       sub="External sales"     color="bg-[#f0a500]"   onClick={() => setModalType('salesToday')} />
+          <StatCard icon={Send}          label="Issued Today"         value={stats.issuedToday}      sub="Unique students served"  color="bg-emerald-600" onClick={() => setModalType('issuedToday')} />
+          <StatCard icon={ShoppingCart}  label="Sales Today"          value={stats.salesToday}       sub="Books sold (qty)"   color="bg-[#f0a500]"   onClick={() => setModalType('salesToday')} />
           <StatCard icon={UserPlus}      label="New Students Today"   value={stats.newStudentsToday} sub="Enrolled today"     color="bg-purple-600"  onClick={() => setModalType('newStudents')} />
           <StatCard icon={ShoppingBag}   label="Bags Issued"          value={stats.bagsIssued}       sub="Total bags given out" color="bg-teal-600"  onClick={() => setModalType('bags')} />
           <StatCard icon={AlertTriangle} label="Low Stock Items"      value={lowStock.length}        sub="Need attention"     color="bg-orange-600"  onClick={() => setModalType('lowStock')} />

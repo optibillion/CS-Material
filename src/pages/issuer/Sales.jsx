@@ -206,10 +206,11 @@ export default function IssuerSales() {
     )
   })
 
-  const totalQty = filteredTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
-  const totalRevenue = filteredTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const cashRevenue = filteredTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const onlineRevenue = filteredTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const activeTxns = filteredTxns.filter(t => !t.all_returned)
+  const totalQty = activeTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const totalRevenue = activeTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const cashRevenue = activeTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const onlineRevenue = activeTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
 
   return (
     <div className="p-4 md:p-6 space-y-5">
