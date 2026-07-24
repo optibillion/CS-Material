@@ -32,6 +32,7 @@ export default function IssuerSales() {
   const [bookSearch, setBookSearch] = useState('')
   const [receiptData, setReceiptData] = useState(null)
   const [expandedTxns, setExpandedTxns] = useState({})
+  const [paymentFilter, setPaymentFilter] = useState(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const [dateFrom, setDateFrom] = useState(today)
@@ -212,6 +213,10 @@ export default function IssuerSales() {
   const cashRevenue = activeTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
   const onlineRevenue = activeTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
 
+  const displayedTxns = paymentFilter
+    ? filteredTxns.filter(t => paymentFilter === 'online' ? t.payment_mode === 'online' : t.payment_mode !== 'online')
+    : filteredTxns
+
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div>
@@ -388,7 +393,7 @@ export default function IssuerSales() {
 
         {/* Date filter */}
         <div className="flex flex-wrap items-center gap-2">
-          <button onClick={() => setShowAll(a => !a)}
+          <button onClick={() => { setShowAll(a => !a); setPaymentFilter(null) }}
             className={`text-xs px-3 py-2 rounded-lg border font-medium transition-all ${showAll ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#2a2a45] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
             All
           </button>
@@ -421,20 +426,30 @@ export default function IssuerSales() {
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3 flex items-center justify-between">
+          <button
+            type="button"
+            onClick={() => setPaymentFilter(prev => prev === 'cash' ? null : 'cash')}
+            className={`text-left bg-[#1a1a2e] rounded-xl p-3 flex items-center justify-between border transition-all touch-manipulation ${paymentFilter === 'cash' ? 'border-white/40' : 'border-[#2a2a45] hover:border-[#3a3a55]'}`}
+          >
             <div>
               <p className="text-[#6b7280] text-xs">Cash</p>
               <p className="text-white text-lg font-bold mt-0.5">₹{cashRevenue.toFixed(0)}</p>
+              <p className="text-[#4b5563] text-[10px] mt-0.5">{paymentFilter === 'cash' ? 'Tap to clear' : 'Tap to filter'}</p>
             </div>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-[#2a2a45] text-[#9ca3af] border border-[#2a2a45]">Cash</span>
-          </div>
-          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3 flex items-center justify-between">
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${paymentFilter === 'cash' ? 'bg-white/20 text-white border-white/30' : 'bg-[#2a2a45] text-[#9ca3af] border-[#2a2a45]'}`}>Cash</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setPaymentFilter(prev => prev === 'online' ? null : 'online')}
+            className={`text-left bg-[#1a1a2e] rounded-xl p-3 flex items-center justify-between border transition-all touch-manipulation ${paymentFilter === 'online' ? 'border-blue-400/60' : 'border-[#2a2a45] hover:border-[#3a3a55]'}`}
+          >
             <div>
               <p className="text-[#6b7280] text-xs">Online</p>
               <p className="text-white text-lg font-bold mt-0.5">₹{onlineRevenue.toFixed(0)}</p>
+              <p className="text-[#4b5563] text-[10px] mt-0.5">{paymentFilter === 'online' ? 'Tap to clear' : 'Tap to filter'}</p>
             </div>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">Online</span>
-          </div>
+            <span className={`text-xs px-2 py-0.5 rounded-full border ${paymentFilter === 'online' ? 'bg-blue-500/40 text-blue-300 border-blue-400/60' : 'bg-blue-500/20 text-blue-400 border-blue-500/30'}`}>Online</span>
+          </button>
         </div>
 
         <div className="relative">
@@ -446,9 +461,9 @@ export default function IssuerSales() {
         <div className="space-y-3">
           {loading ? [...Array(3)].map((_, i) => (
             <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 animate-pulse h-28" />
-          )) : filteredTxns.length === 0 ? (
+          )) : displayedTxns.length === 0 ? (
             <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 text-center text-[#6b7280] text-sm">No sales found</div>
-          ) : filteredTxns.map(txn => (
+          ) : displayedTxns.map(txn => (
             <div key={txn.key} className={`bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 ${txn.all_returned ? 'opacity-60' : ''}`}>
               {/* Header */}
               <div className="flex items-start justify-between mb-1">
