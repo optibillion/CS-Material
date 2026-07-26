@@ -13,7 +13,7 @@ const ROLE_COLORS = {
 }
 
 export default function Bags() {
-  const { profile } = useAuthStore()
+  const { profile, isAdmin } = useAuthStore()
   const [staff, setStaff] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -159,7 +159,7 @@ export default function Bags() {
                 )}
               </div>
 
-              {member.bag_issued ? (
+              {member.bag_issued && isAdmin ? (
                 <button
                   onClick={() => revokeBag(member)}
                   disabled={issuing === member.id}
@@ -167,7 +167,7 @@ export default function Bags() {
                 >
                   Undo
                 </button>
-              ) : (
+              ) : !member.bag_issued ? (
                 <button
                   onClick={() => issueBag(member)}
                   disabled={issuing === member.id}
