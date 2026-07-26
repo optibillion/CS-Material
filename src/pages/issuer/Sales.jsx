@@ -38,7 +38,7 @@ export default function IssuerSales() {
   const today = new Date().toISOString().slice(0, 10)
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
-  const [showAll, setShowAll] = useState(false)
+  const [showAll, setShowAll] = useState(true)
   const [salesStats, setSalesStats] = useState(null)
 
   useEffect(() => { fetchData() }, [])
