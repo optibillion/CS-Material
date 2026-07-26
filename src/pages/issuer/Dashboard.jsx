@@ -68,7 +68,8 @@ export default function IssuerDashboard() {
         g.books.push({ title: s.books?.title, qty: s.qty, is_returned: s.is_returned })
         if (!s.is_returned) g.all_returned = false
       }
-      setModalData(Object.values(groups).sort((a, b) => new Date(b.sold_at) - new Date(a.sold_at)))
+      const allTxns = Object.values(groups).sort((a, b) => new Date(b.sold_at) - new Date(a.sold_at))
+      setModalData(allTxns.filter(t => !t.all_returned))
     }
     setModalLoading(false)
   }

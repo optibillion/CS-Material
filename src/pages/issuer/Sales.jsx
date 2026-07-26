@@ -49,6 +49,7 @@ export default function IssuerSales() {
       supabase.from('stock').select('id, book_id, available_qty, location'),
       supabase.from('sales')
         .select('*, books(title, exam_level, unit, part, medium), users!sales_sold_by_fkey(name)')
+        .eq('sold_by', profile?.id)
         .order('sold_at', { ascending: false })
     ])
     setBooks(booksData || [])
@@ -208,7 +209,7 @@ export default function IssuerSales() {
   })
 
   const activeTxns = filteredTxns.filter(t => !t.all_returned)
-  const totalQty = activeTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  const totalQty = activeTxns.reduce((s, t) => s + t.books.filter(b => !b.is_returned).reduce((bs, b) => bs + (b.qty || 1), 0), 0)
   const totalRevenue = activeTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
   const cashRevenue = activeTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
   const onlineRevenue = activeTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
@@ -414,7 +415,10 @@ export default function IssuerSales() {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3">
             <p className="text-[#6b7280] text-xs">Transactions</p>
-            <p className="text-white text-xl font-bold mt-0.5">{filteredTxns.length}</p>
+            <p className="text-white text-xl font-bold mt-0.5">{activeTxns.length}</p>
+            {filteredTxns.length > activeTxns.length && (
+              <p className="text-[#4b5563] text-[10px] mt-0.5">{filteredTxns.length - activeTxns.length} returned</p>
+            )}
           </div>
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-3">
             <p className="text-[#6b7280] text-xs">Books Sold</p>
