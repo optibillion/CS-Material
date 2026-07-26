@@ -27,6 +27,7 @@ export default function IssuerSales() {
   const [saleMedium, setSaleMedium] = useState('')
   const [selectedBooks, setSelectedBooks] = useState([])
   const [finalPrice, setFinalPrice] = useState('')
+  const [remark, setRemark] = useState('')
   const [examFilter, setExamFilter] = useState('all')
   const [unitFilter, setUnitFilter] = useState('all')
   const [bookSearch, setBookSearch] = useState('')
@@ -112,7 +113,8 @@ export default function IssuerSales() {
       sold_by: profile?.id,
       sold_at: now,
       payment_mode: paymentMode,
-      is_returned: false
+      is_returned: false,
+      remark: i === 0 ? (remark.trim() || null) : null
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
     if (error) { toast.error('Failed to record sale'); setSubmitting(false); return }
@@ -135,8 +137,9 @@ export default function IssuerSales() {
       sold_by_name: profile?.name,
       payment_mode: paymentMode,
       medium: saleMedium,
+      remark: remark.trim() || null,
     })
-    setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setPaymentMode('cash'); setSelectedBooks([]); setFinalPrice('')
+    setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setPaymentMode('cash'); setSelectedBooks([]); setFinalPrice(''); setRemark('')
     fetchData()
     setSubmitting(false)
   }
@@ -178,6 +181,7 @@ export default function IssuerSales() {
           sold_at: s.sold_at,
           total_price: null,
           payment_mode: s.payment_mode || 'cash',
+          remark: null,
           books: [],
           ids: [],
           all_returned: true
@@ -185,6 +189,7 @@ export default function IssuerSales() {
       }
       const g = groups[key]
       if (s.total_price) g.total_price = s.total_price
+      if (s.remark) g.remark = s.remark
       g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
       g.ids.push(s.id)
       if (!s.is_returned) g.all_returned = false
@@ -239,6 +244,11 @@ export default function IssuerSales() {
             <input value={buyerPhone} onChange={e => setBuyerPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} placeholder="10 digit number"
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
           </div>
+        </div>
+        <div>
+          <label className="text-[#9ca3af] text-xs mb-1 block">Remark <span className="text-[#4b5563]">(optional)</span></label>
+          <input value={remark} onChange={e => setRemark(e.target.value)} placeholder="e.g. discount given, special order..."
+            className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
         </div>
         <div>
           <label className="text-[#9ca3af] text-xs mb-2 block">Payment Mode *</label>
@@ -475,6 +485,7 @@ export default function IssuerSales() {
                   <p className="text-white font-semibold text-sm">{txn.buyer_name}</p>
                   {txn.buyer_phone && <p className="text-[#6b7280] text-xs">{txn.buyer_phone}</p>}
                   <p className="text-[#4b5563] text-xs mt-0.5">by {txn.sold_by_name || '—'} · {format(new Date(txn.sold_at), 'dd MMM yy, hh:mm a')}</p>
+                  {txn.remark && <p className="text-[#f0a500] text-xs mt-0.5 italic">"{txn.remark}"</p>}
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${txn.all_returned ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'}`}>
