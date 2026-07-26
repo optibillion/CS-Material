@@ -44,7 +44,9 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
 }
 
 function getRowSearchText(type, row) {
-  if (type === 'students' || type === 'newStudents' || type === 'bags')
+  if (type === 'bags')
+    return `${row.name || ''}`.toLowerCase()
+  if (type === 'students' || type === 'newStudents')
     return `${row.name} ${row.student_id} ${row.batches?.name || ''} ${row.batches?.batch_code || ''}`.toLowerCase()
   if (type === 'books')
     return `${row.title} ${row.exam_level || ''} ${row.unit || ''} ${row.part || ''} ${row.medium || ''}`.toLowerCase()
@@ -222,14 +224,17 @@ function RowItem({ type, row, index }) {
         {num}
         <div className="flex-1 min-w-0">
           <p className="text-white text-sm font-medium truncate">{row.name}</p>
-          {row.batches && (
-            <p className="text-[#6b7280] text-xs">
-              {row.batches.batch_code && <span className="text-[#f0a500] font-mono">{row.batches.batch_code} · </span>}
-              {row.batches.name}
-            </p>
+          {row.date && (
+            <p className="text-[#6b7280] text-xs">{safeFormat(row.date, 'dd MMM yyyy, h:mm a')}</p>
           )}
         </div>
-        <span className="text-[#6b7280] text-xs font-mono flex-shrink-0">{row.student_id}</span>
+        <span className={`text-xs px-1.5 py-0.5 rounded border font-medium flex-shrink-0 ${
+          row._type === 'student'
+            ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30'
+            : 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30'
+        }`}>
+          {row._type === 'student' ? 'Student' : 'Staff'}
+        </span>
       </div>
     )
   }
@@ -310,10 +315,14 @@ async function fetchData(type) {
       return data || []
     }
     case 'bags': {
-      const { data } = await supabase
-        .from('students').select('name, student_id, batches(name, batch_code)')
-        .eq('bag_issued', true).order('name')
-      return data || []
+      const [{ data: students }, { data: staff }] = await Promise.all([
+        supabase.from('students').select('name, student_id, bag_issued_at').eq('bag_issued', true),
+        supabase.from('staff_bag_issuances').select('recipient_name, issued_at'),
+      ])
+      return [
+        ...(students || []).map(s => ({ _type: 'student', name: s.name, student_id: s.student_id, date: s.bag_issued_at })),
+        ...(staff || []).map(s => ({ _type: 'staff', name: s.recipient_name, date: s.issued_at })),
+      ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
     }
     case 'lowStock': {
       const { data } = await supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)')
@@ -353,7 +362,8 @@ export default function Dashboard() {
       { data: issuedTodayData },
       { data: salesTodayQtyData },
       { count: newStudentsToday },
-      { count: bagsIssued },
+      { count: studentBagsCount },
+      { count: staffBagsCount },
       { data: recentData },
       { data: stockData }
     ] = await Promise.all([
@@ -363,6 +373,7 @@ export default function Dashboard() {
       supabase.from('sales').select('qty').gte('sold_at', todayISO).eq('is_returned', false),
       supabase.from('students').select('*', { count: 'exact', head: true }).gte('created_at', todayISO),
       supabase.from('students').select('*', { count: 'exact', head: true }).eq('bag_issued', true),
+      supabase.from('staff_bag_issuances').select('*', { count: 'exact', head: true }),
       supabase.from('issuances')
         .select('id, issued_at, students(name, student_id), books(title, exam_level, unit, part), users!issuances_issued_by_fkey(name)')
         .eq('is_reversed', false)
@@ -373,6 +384,7 @@ export default function Dashboard() {
 
     const issuedToday = new Set((issuedTodayData || []).map(r => r.student_id)).size
     const salesToday = (salesTodayQtyData || []).reduce((sum, r) => sum + (r.qty || 1), 0)
+    const bagsIssued = (studentBagsCount || 0) + (staffBagsCount || 0)
     setStats({ totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued })
     setRecentIssuances(recentData || [])
     setLowStock(stockData?.filter(s => s.available_qty <= s.low_stock_threshold) || [])
