@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS staff_bag_issuances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   recipient_name TEXT NOT NULL,
-  issued_by UUID REFERENCES public.users(id),
+  issued_by UUID,
   issued_at TIMESTAMPTZ DEFAULT NOW()
 );
 
