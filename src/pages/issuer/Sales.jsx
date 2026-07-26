@@ -39,8 +39,21 @@ export default function IssuerSales() {
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
   const [showAll, setShowAll] = useState(false)
+  const [salesStats, setSalesStats] = useState(null)
 
   useEffect(() => { fetchData() }, [])
+
+  useEffect(() => { fetchSalesStats() }, [showAll, dateFrom, dateTo])
+
+  async function fetchSalesStats() {
+    const params = { user_id: profile?.id }
+    if (!showAll) {
+      if (dateFrom) params.date_from = dateFrom
+      if (dateTo) params.date_to = dateTo
+    }
+    const { data } = await supabase.rpc('get_my_sales_stats', params)
+    if (data) setSalesStats(data)
+  }
 
   async function fetchData() {
     setLoading(true)
@@ -214,10 +227,10 @@ export default function IssuerSales() {
   })
 
   const activeTxns = filteredTxns.filter(t => !t.all_returned)
-  const totalQty = activeTxns.reduce((s, t) => s + t.books.filter(b => !b.is_returned).reduce((bs, b) => bs + (b.qty || 1), 0), 0)
-  const totalRevenue = activeTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const cashRevenue = activeTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const onlineRevenue = activeTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  const totalQty = salesStats?.total_qty ?? 0
+  const totalRevenue = salesStats?.total_revenue ?? 0
+  const cashRevenue = salesStats?.cash_revenue ?? 0
+  const onlineRevenue = salesStats?.online_revenue ?? 0
 
   const displayedTxns = paymentFilter
     ? filteredTxns.filter(t => paymentFilter === 'online' ? t.payment_mode === 'online' : t.payment_mode !== 'online')
