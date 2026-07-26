@@ -40,6 +40,9 @@ import IssuerIssue from './pages/issuer/Issue'
 import IssuerSales from './pages/issuer/Sales'
 import IssuerStudentDetail from './pages/issuer/StudentDetail'
 
+// Shared pages
+import Bags from './pages/shared/Bags'
+
 function ProtectedAdmin({ children }) {
   const { user, isAdmin } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
@@ -114,6 +117,7 @@ export default function App() {
           <Route path="batches" element={<AdminBatches />} />
           <Route path="courses" element={<AdminCourses />} />
           <Route path="issue" element={<AdminIssue />} />
+          <Route path="bags" element={<Bags />} />
           <Route path="students/:id" element={<StudentDetail />} />
         </Route>
 
@@ -124,6 +128,7 @@ export default function App() {
           <Route path="issue" element={<IssuerIssue />} />
           <Route path="sales" element={<IssuerSales />} />
           <Route path="students/:id" element={<IssuerStudentDetail />} />
+          <Route path="bags" element={<Bags />} />
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />

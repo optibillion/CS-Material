@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
-import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag } from 'lucide-react'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
 
@@ -9,6 +9,7 @@ const baseNavItems = [
   { to: '/issuer', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/issuer/students', label: 'Students', icon: Users },
   { to: '/issuer/sales', label: 'Record Sale', icon: ShoppingCart },
+  { to: '/issuer/bags', label: 'Bags', icon: ShoppingBag },
 ]
 
 export default function IssuerLayout() {
