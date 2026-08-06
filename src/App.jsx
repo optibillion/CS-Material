@@ -18,6 +18,7 @@ import BookPrices from './pages/admin/BookPrices'
 import AdminBundles from './pages/admin/Bundles'
 import AdminIssuances from './pages/admin/Issuances'
 import AdminSales from './pages/admin/Sales'
+import AdminWebsiteOrders from './pages/admin/WebsiteOrders'
 import AdminAllotments from './pages/admin/Allotments'
 import AdminInventory from './pages/admin/Inventory'
 import AdminUsers from './pages/admin/Users'
@@ -108,6 +109,7 @@ export default function App() {
           <Route path="bundles" element={<AdminBundles />} />
           <Route path="issuances" element={<AdminIssuances />} />
           <Route path="sales" element={<AdminSales />} />
+          <Route path="website-orders" element={<AdminWebsiteOrders />} />
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
