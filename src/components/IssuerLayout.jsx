@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
-import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag, Globe } from 'lucide-react'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
 
@@ -13,12 +13,13 @@ const baseNavItems = [
 ]
 
 export default function IssuerLayout() {
-  const { profile, logout, allotmentAccess, stockAccess, priceAccess } = useAuthStore()
+  const { profile, logout, allotmentAccess, stockAccess, priceAccess, websiteOrdersAccess } = useAuthStore()
   const navItems = [
     ...baseNavItems,
     ...(allotmentAccess ? [{ to: '/issuer/allotments', label: 'Distributors', icon: Building2 }] : []),
     ...(stockAccess ? [{ to: '/issuer/inventory', label: 'Inventory', icon: Archive }] : []),
     ...(priceAccess ? [{ to: '/issuer/books', label: 'Book Prices', icon: Tag }] : []),
+    ...(websiteOrdersAccess ? [{ to: '/issuer/website-orders', label: 'Website Orders', icon: Globe }] : []),
   ]
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)

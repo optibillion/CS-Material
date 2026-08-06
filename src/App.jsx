@@ -135,6 +135,7 @@ export default function App() {
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="books" element={<BookPrices />} />
+          <Route path="website-orders" element={<AdminWebsiteOrders />} />
         </Route>
 
         {/* Accountant routes */}
