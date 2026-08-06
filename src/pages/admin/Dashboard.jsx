@@ -387,7 +387,7 @@ export default function Dashboard() {
     ] = await Promise.all([
       supabase.from('students').select('*', { count: 'exact', head: true }),
       supabase.from('books').select('*', { count: 'exact', head: true }).eq('is_active', true),
-      supabase.from('issuances').select('student_id').gte('issued_at', todayISO).eq('is_reversed', false),
+      supabase.from('issuances').select('student_id').gte('issued_at', todayISO).eq('is_reversed', false).eq('is_previous_issuance', false),
       supabase.from('sales').select('qty').gte('sold_at', todayISO).eq('is_returned', false),
       supabase.from('students').select('*', { count: 'exact', head: true }).gte('created_at', todayISO),
       supabase.from('students').select('*', { count: 'exact', head: true }).eq('bag_issued', true),
@@ -395,11 +395,15 @@ export default function Dashboard() {
       supabase.from('issuances')
         .select('id, issued_at, students(name, student_id), books(title, exam_level, unit, part), users!issuances_issued_by_fkey(name)')
         .eq('is_reversed', false)
+        .eq('is_previous_issuance', false)
         .order('issued_at', { ascending: false })
         .limit(8),
       supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)'),
-      // All-time totals: count() and RPC sums bypass Supabase's 1000-row select cap
-      supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('is_reversed', false),
+      // All-time totals: count() and RPC sums bypass Supabase's 1000-row select cap.
+      // is_previous_issuance rows are historical/backfilled records — no stock was ever
+      // deducted for those (see Issue.jsx "Previous Issue — no stock deduction"), so they
+      // must be excluded to match the "deducted from stock" definition of this card.
+      supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('is_reversed', false).eq('is_previous_issuance', false),
       supabase.rpc('get_total_sales_qty'),
       supabase.rpc('get_total_allotments_qty'),
     ])
