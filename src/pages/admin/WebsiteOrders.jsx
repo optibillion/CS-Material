@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, Globe, MapPin, Phone, Mail, Package, X, CreditCard, User } from 'lucide-react'
+import { Search, MapPin, Phone, Package, X, CreditCard, User, Truck, CheckSquare, Square } from 'lucide-react'
 import { format } from 'date-fns'
+import toast from 'react-hot-toast'
 
 function safeFormat(dateStr, fmt) {
   if (!dateStr) return '—'
@@ -9,15 +10,20 @@ function safeFormat(dateStr, fmt) {
   return isNaN(d.getTime()) ? '—' : format(d, fmt)
 }
 
-function StatusBadge({ status }) {
-  const isPaid = (status || 'PAID').toUpperCase() === 'PAID'
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${
-      isPaid ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-    }`}>
-      {status || 'PAID'}
-    </span>
-  )
+function fulfillmentStage(o) {
+  if (o.delivered) return 2
+  if (o.shipped) return 1
+  return 0
+}
+
+function FulfillmentBadge({ order }) {
+  const stage = fulfillmentStage(order)
+  const meta = stage === 2
+    ? { label: 'Delivered', cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' }
+    : stage === 1
+    ? { label: 'Shipped', cls: 'bg-blue-500/20 text-blue-400 border-blue-500/30' }
+    : { label: 'New', cls: 'bg-orange-500/20 text-orange-400 border-orange-500/30' }
+  return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${meta.cls}`}>{meta.label}</span>
 }
 
 function Section({ icon: Icon, label, children }) {
@@ -32,9 +38,23 @@ function Section({ icon: Icon, label, children }) {
   )
 }
 
-function OrderDetailModal({ order, onClose }) {
+function Field({ label, value }) {
+  if (!value) return null
+  return (
+    <div className="flex items-start justify-between gap-3 py-1.5">
+      <span className="text-[#6b7280] text-xs flex-shrink-0">{label}</span>
+      <span className="text-[#e5e7eb] text-xs text-right break-words">{value}</span>
+    </div>
+  )
+}
+
+function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver }) {
+  const [awbInput, setAwbInput] = useState('')
+  const [showAwbInput, setShowAwbInput] = useState(false)
+
+  useEffect(() => { setAwbInput(''); setShowAwbInput(false) }, [order?.id])
+
   if (!order) return null
-  const address = [order.house, order.locality, order.city, order.district, order.state, order.pincode].filter(Boolean).join(', ')
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={onClose}>
@@ -46,7 +66,7 @@ function OrderDetailModal({ order, onClose }) {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-white font-bold text-lg">#{order.cs_order_id}</h2>
-              <StatusBadge status={order.status} />
+              <FulfillmentBadge order={order} />
             </div>
             <p className="text-[#6b7280] text-xs mt-1">{safeFormat(order.order_date, 'dd MMM yyyy, hh:mm a')}</p>
           </div>
@@ -57,6 +77,52 @@ function OrderDetailModal({ order, onClose }) {
         </div>
 
         <div className="px-6 py-5 overflow-y-auto space-y-0">
+          <Section icon={Truck} label="Fulfillment">
+            <div className="space-y-3">
+              {order.shipped ? (
+                <div className="flex items-start gap-2">
+                  <CheckSquare size={16} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-sm font-medium">Shipped</p>
+                    <p className="text-[#6b7280] text-xs mt-0.5 break-all">AWB / Tracking: <span className="text-[#9ca3af] font-mono">{order.shipped_awb || '—'}</span></p>
+                    <p className="text-[#4b5563] text-xs mt-0.5">
+                      {safeFormat(order.shipped_at, 'dd MMM yyyy, hh:mm a')}
+                      {' · '}
+                      <button onClick={() => onUnship(order)} className="text-[#6b7280] hover:text-red-400 underline">Undo</button>
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <button onClick={() => setShowAwbInput(true)}
+                    className="flex items-center gap-2 text-sm text-[#9ca3af] hover:text-white transition-colors">
+                    <Square size={16} /> Mark as Shipped
+                  </button>
+                  {showAwbInput && (
+                    <div className="flex gap-2 mt-2 ml-6">
+                      <input value={awbInput} onChange={e => setAwbInput(e.target.value)} placeholder="AWB number or tracking link" autoFocus
+                        onKeyDown={e => { if (e.key === 'Enter') onShip(order, awbInput) }}
+                        className="flex-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+                      <button onClick={() => onShip(order, awbInput)}
+                        className="px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white text-xs font-semibold transition-all">
+                        Confirm
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {order.shipped && (
+                <button onClick={() => onDeliver(order, !order.delivered)}
+                  className="flex items-center gap-2 text-sm transition-colors">
+                  {order.delivered ? <CheckSquare size={16} className="text-blue-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                  <span className={order.delivered ? 'text-white font-medium' : 'text-[#9ca3af]'}>Delivered</span>
+                  {order.delivered && order.delivered_at && <span className="text-[#4b5563] text-xs">· {safeFormat(order.delivered_at, 'dd MMM yyyy, hh:mm a')}</span>}
+                </button>
+              )}
+            </div>
+          </Section>
+
           <Section icon={Package} label="Product">
             <p className="text-white text-sm font-medium leading-snug">{order.product_name}</p>
           </Section>
@@ -72,31 +138,30 @@ function OrderDetailModal({ order, onClose }) {
           )}
 
           <Section icon={User} label="Customer">
-            <p className="text-white text-sm font-medium">{order.buyer_name || 'Unknown'}</p>
-            <div className="flex flex-col gap-1 mt-1.5">
-              {order.phone && (
-                <a href={`tel:${order.phone}`} className="text-[#9ca3af] hover:text-white text-xs flex items-center gap-1.5 w-fit">
-                  <Phone size={11} />{order.phone}
-                </a>
-              )}
-              {order.email && (
-                <a href={`mailto:${order.email}`} className="text-[#9ca3af] hover:text-white text-xs flex items-center gap-1.5 w-fit break-all">
-                  <Mail size={11} />{order.email}
-                </a>
-              )}
+            <div className="divide-y divide-[#2a2a45]/60">
+              <Field label="Naam / Name" value={order.buyer_name} />
+              <Field label="Mobile" value={order.phone} />
+              <Field label="Email" value={order.email} />
             </div>
           </Section>
 
-          {address && (
-            <Section icon={MapPin} label="Shipping Address">
-              <p className="text-[#9ca3af] text-sm leading-relaxed">{address}</p>
-            </Section>
-          )}
+          <Section icon={MapPin} label="Shipping Address">
+            <div className="divide-y divide-[#2a2a45]/60">
+              <Field label="House / Flat / Building" value={order.house} />
+              <Field label="Colony / Locality" value={order.locality} />
+              <Field label="City / Tehsil" value={order.city} />
+              <Field label="District / Zila" value={order.district} />
+              <Field label="State / Rajya" value={order.state} />
+              <Field label="Pincode" value={order.pincode} />
+            </div>
+          </Section>
 
           <Section icon={CreditCard} label="Payment">
-            <div className="space-y-1">
-              <p className="text-[#6b7280] text-xs">Razorpay Order <span className="text-[#9ca3af] font-mono">{order.razorpay_order_id || '—'}</span></p>
-              <p className="text-[#6b7280] text-xs">Payment ID <span className="text-[#9ca3af] font-mono">{order.razorpay_payment_id || '—'}</span></p>
+            <div className="divide-y divide-[#2a2a45]/60">
+              <Field label="Amount" value={order.amount != null ? `₹${Number(order.amount).toLocaleString('en-IN')}` : null} />
+              <Field label="Payment Status" value={order.status || 'PAID'} />
+              <Field label="Razorpay Order ID" value={order.razorpay_order_id} />
+              <Field label="Payment ID" value={order.razorpay_payment_id} />
             </div>
           </Section>
         </div>
@@ -128,26 +193,64 @@ export default function WebsiteOrders() {
 
   useEffect(() => { fetchOrders() }, [])
 
-  const filtered = useMemo(() => orders.filter(o => {
-    if (!showAll) {
-      const d = (o.order_date || o.created_at || '').slice(0, 10)
-      if (dateFrom && d < dateFrom) return false
-      if (dateTo && d > dateTo) return false
-    }
-    const q = search.trim().toLowerCase()
-    if (!q) return true
-    return (
-      o.buyer_name?.toLowerCase().includes(q) ||
-      o.phone?.includes(search) ||
-      o.email?.toLowerCase().includes(q) ||
-      o.product_name?.toLowerCase().includes(q) ||
-      o.cs_order_id?.toLowerCase().includes(q) ||
-      o.city?.toLowerCase().includes(q) ||
-      o.pincode?.includes(search)
-    )
-  }), [orders, search, dateFrom, dateTo, showAll])
+  function applyUpdate(orderId, patch) {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...patch } : o))
+    setSelectedOrder(prev => prev && prev.id === orderId ? { ...prev, ...patch } : prev)
+  }
+
+  async function handleShip(order, awb) {
+    if (!awb.trim()) { toast.error('Enter an AWB number or tracking link'); return }
+    const patch = { shipped: true, shipped_awb: awb.trim(), shipped_at: new Date().toISOString() }
+    const { error } = await supabase.from('website_orders').update(patch).eq('id', order.id)
+    if (error) { toast.error('Failed to save — has add_website_orders_fulfillment.sql been run in Supabase?'); return }
+    applyUpdate(order.id, patch)
+    toast.success('Marked as shipped')
+  }
+
+  async function handleUnship(order) {
+    const patch = { shipped: false, shipped_awb: null, shipped_at: null, delivered: false, delivered_at: null }
+    const { error } = await supabase.from('website_orders').update(patch).eq('id', order.id)
+    if (error) { toast.error('Failed to undo'); return }
+    applyUpdate(order.id, patch)
+    toast.success('Shipped status undone')
+  }
+
+  async function handleDeliver(order, delivered) {
+    const patch = { delivered, delivered_at: delivered ? new Date().toISOString() : null }
+    const { error } = await supabase.from('website_orders').update(patch).eq('id', order.id)
+    if (error) { toast.error('Failed to update delivery status'); return }
+    applyUpdate(order.id, patch)
+    toast.success(delivered ? 'Marked as delivered' : 'Delivery unmarked')
+  }
+
+  const filtered = useMemo(() => {
+    const list = orders.filter(o => {
+      if (!showAll) {
+        const d = (o.order_date || o.created_at || '').slice(0, 10)
+        if (dateFrom && d < dateFrom) return false
+        if (dateTo && d > dateTo) return false
+      }
+      const q = search.trim().toLowerCase()
+      if (!q) return true
+      return (
+        o.buyer_name?.toLowerCase().includes(q) ||
+        o.phone?.includes(search) ||
+        o.email?.toLowerCase().includes(q) ||
+        o.product_name?.toLowerCase().includes(q) ||
+        o.cs_order_id?.toLowerCase().includes(q) ||
+        o.city?.toLowerCase().includes(q) ||
+        o.pincode?.includes(search)
+      )
+    })
+    return [...list].sort((a, b) => {
+      const stageDiff = fulfillmentStage(a) - fulfillmentStage(b)
+      if (stageDiff !== 0) return stageDiff
+      return new Date(b.order_date || 0) - new Date(a.order_date || 0)
+    })
+  }, [orders, search, dateFrom, dateTo, showAll])
 
   const totalRevenue = filtered.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0)
+  const newCount = filtered.filter(o => !o.shipped).length
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -174,10 +277,14 @@ export default function WebsiteOrders() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
           <p className="text-[#6b7280] text-xs">Orders</p>
           <p className="text-white text-2xl font-bold mt-0.5">{filtered.length}</p>
+        </div>
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
+          <p className="text-[#6b7280] text-xs">New</p>
+          <p className="text-orange-400 text-2xl font-bold mt-0.5">{newCount}</p>
         </div>
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
           <p className="text-[#6b7280] text-xs">Revenue</p>
@@ -218,7 +325,7 @@ export default function WebsiteOrders() {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                <StatusBadge status={o.status} />
+                <FulfillmentBadge order={o} />
                 {o.amount != null && <span className="text-[#f0a500] font-bold text-sm whitespace-nowrap">₹{Number(o.amount).toLocaleString('en-IN')}</span>}
               </div>
             </div>
@@ -226,7 +333,13 @@ export default function WebsiteOrders() {
         ))}
       </div>
 
-      <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
+      <OrderDetailModal
+        order={selectedOrder}
+        onClose={() => setSelectedOrder(null)}
+        onShip={handleShip}
+        onUnship={handleUnship}
+        onDeliver={handleDeliver}
+      />
     </div>
   )
 }

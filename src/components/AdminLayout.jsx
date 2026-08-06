@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
+import { useNewOrdersCount } from '../hooks/useNewOrdersCount'
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -35,6 +36,7 @@ export default function AdminLayout() {
   const { profile, logout } = useAuthStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const newOrdersCount = useNewOrdersCount()
 
   function handleLogout() {
     logout()
@@ -84,6 +86,11 @@ export default function AdminLayout() {
             >
               <Icon size={17} />
               <span className="flex-1">{label}</span>
+              {to === '/admin/website-orders' && newOrdersCount > 0 && (
+                <span className="bg-[#bd0a0a] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

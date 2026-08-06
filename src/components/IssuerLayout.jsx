@@ -4,6 +4,7 @@ import { brand } from '../lib/brand'
 import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag, Globe } from 'lucide-react'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
+import { useNewOrdersCount } from '../hooks/useNewOrdersCount'
 
 const baseNavItems = [
   { to: '/issuer', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -14,6 +15,7 @@ const baseNavItems = [
 
 export default function IssuerLayout() {
   const { profile, logout, allotmentAccess, stockAccess, priceAccess, websiteOrdersAccess } = useAuthStore()
+  const newOrdersCount = useNewOrdersCount(websiteOrdersAccess)
   const navItems = [
     ...baseNavItems,
     ...(allotmentAccess ? [{ to: '/issuer/allotments', label: 'Distributors', icon: Building2 }] : []),
@@ -66,7 +68,12 @@ export default function IssuerLayout() {
               }
             >
               <Icon size={17} />
-              {label}
+              <span className="flex-1">{label}</span>
+              {to === '/issuer/website-orders' && newOrdersCount > 0 && (
+                <span className="bg-[#bd0a0a] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -112,12 +119,19 @@ export default function IssuerLayout() {
             {navItems.map(({ to, label, icon: Icon, end }) => (
               <NavLink key={to} to={to} end={end}
                 className={({ isActive }) =>
-                  `flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-all ${
+                  `relative flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg transition-all ${
                     isActive ? 'text-[#bd0a0a]' : 'text-[#6b7280]'
                   }`
                 }
               >
-                <Icon size={20} />
+                <span className="relative">
+                  <Icon size={20} />
+                  {to === '/issuer/website-orders' && newOrdersCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-[#bd0a0a] text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
+                      {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                    </span>
+                  )}
+                </span>
                 <span className="text-xs">{label}</span>
               </NavLink>
             ))}
