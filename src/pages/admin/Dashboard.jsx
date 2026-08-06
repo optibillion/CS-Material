@@ -2,7 +2,7 @@ import { useRealtime } from '../../hooks/useRealtime'
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package, Search } from 'lucide-react'
+import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package, Search, Truck } from 'lucide-react'
 import { format } from 'date-fns'
 
 function safeFormat(dateStr, fmt) {
@@ -40,6 +40,20 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
       </div>
       <p className="text-[#4b5563] text-xs mt-2">Tap to view details</p>
     </button>
+  )
+}
+
+function BreakdownStat({ icon: Icon, label, value, color }) {
+  return (
+    <div className="flex items-center gap-3 bg-[#12121f] border border-[#2a2a45] rounded-lg px-4 py-3">
+      <div className={`p-2 rounded-lg bg-[#1a1a2e] ${color}`}>
+        <Icon size={16} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-white text-xl font-bold leading-tight">{value ?? '—'}</p>
+        <p className="text-[#6b7280] text-xs">{label}</p>
+      </div>
+    </div>
   )
 }
 
@@ -349,6 +363,7 @@ export default function Dashboard() {
   useRealtime('issuances', fetchAll)
   useRealtime('students', fetchAll)
   useRealtime('sales', fetchAll)
+  useRealtime('allotments', fetchAll)
 
   async function fetchAll() {
     setLoading(true)
@@ -365,7 +380,10 @@ export default function Dashboard() {
       { count: studentBagsCount },
       { count: staffBagsCount },
       { data: recentData },
-      { data: stockData }
+      { data: stockData },
+      { count: totalIssuancesCount },
+      { data: totalSalesQtyData },
+      { data: totalAllotmentsQtyData },
     ] = await Promise.all([
       supabase.from('students').select('*', { count: 'exact', head: true }),
       supabase.from('books').select('*', { count: 'exact', head: true }).eq('is_active', true),
@@ -379,13 +397,24 @@ export default function Dashboard() {
         .eq('is_reversed', false)
         .order('issued_at', { ascending: false })
         .limit(8),
-      supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)')
+      supabase.from('stock').select('*, books(title, exam_level, unit, part, medium, category)'),
+      // All-time totals: count() and RPC sums bypass Supabase's 1000-row select cap
+      supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('is_reversed', false),
+      supabase.rpc('get_total_sales_qty'),
+      supabase.rpc('get_total_allotments_qty'),
     ])
 
     const issuedToday = new Set((issuedTodayData || []).map(r => r.student_id)).size
     const salesToday = (salesTodayQtyData || []).reduce((sum, r) => sum + (r.qty || 1), 0)
     const bagsIssued = (studentBagsCount || 0) + (staffBagsCount || 0)
-    setStats({ totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued })
+    const totalIssuedBooks = totalIssuancesCount || 0
+    const totalSalesQty = totalSalesQtyData || 0
+    const totalAllotmentsQty = totalAllotmentsQtyData || 0
+    const totalDistributed = totalIssuedBooks + totalSalesQty + totalAllotmentsQty
+    setStats({
+      totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued,
+      totalIssuedBooks, totalSalesQty, totalAllotmentsQty, totalDistributed,
+    })
     setRecentIssuances(recentData || [])
     setLowStock(stockData?.filter(s => s.available_qty <= s.low_stock_threshold) || [])
     setLoading(false)
@@ -399,6 +428,25 @@ export default function Dashboard() {
           Welcome back, {profile?.name} · {format(new Date(), 'EEEE, d MMMM yyyy')}
         </p>
       </div>
+
+      {loading ? (
+        <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 animate-pulse h-48" />
+      ) : (
+        <div className="bg-gradient-to-br from-[#1a1a2e] to-[#221530] border border-[#bd0a0a]/30 rounded-xl p-6">
+          <div className="flex items-center gap-2">
+            <Package size={18} className="text-[#bd0a0a]" />
+            <h2 className="text-white font-semibold text-sm">Total Books Distributed</h2>
+          </div>
+          <p className="text-[#6b7280] text-xs mt-0.5">All time · sales + distributor allotments + student issuances, deducted from stock</p>
+          <p className="text-white text-4xl sm:text-5xl font-bold mt-3">{stats.totalDistributed ?? '—'}</p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+            <BreakdownStat icon={Send}         label="Issued to Students" value={stats.totalIssuedBooks}   color="text-emerald-400" />
+            <BreakdownStat icon={ShoppingCart}  label="Sold (Sales)"        value={stats.totalSalesQty}      color="text-[#f0a500]" />
+            <BreakdownStat icon={Truck}         label="Given to Distributors" value={stats.totalAllotmentsQty} color="text-purple-400" />
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
