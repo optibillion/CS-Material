@@ -398,7 +398,7 @@ export default function Dashboard() {
   useRealtime('students', fetchAll)
   useRealtime('sales', fetchAll)
   useRealtime('allotments', fetchAll)
-  useRealtime('website_orders', fetchAll)
+  useRealtime('website_orders', fetchAll, 'realtime-website_orders-dashboard')
 
   async function fetchAll() {
     setLoading(true)
