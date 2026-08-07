@@ -1,8 +1,9 @@
 import { useRealtime } from '../../hooks/useRealtime'
 import { useEffect, useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
-import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package, Search, Truck } from 'lucide-react'
+import { Users, BookOpen, Send, ShoppingCart, AlertTriangle, TrendingUp, UserPlus, ShoppingBag, X, Package, Search, Truck, Globe } from 'lucide-react'
 import { format } from 'date-fns'
 
 function safeFormat(dateStr, fmt) {
@@ -40,6 +41,39 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
       </div>
       <p className="text-[#4b5563] text-xs mt-2">Tap to view details</p>
     </button>
+  )
+}
+
+function WebsiteOrdersCard({ total, newCount, shipped, delivered }) {
+  return (
+    <Link
+      to="/admin/website-orders"
+      className="block w-full text-left bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 hover:border-[#3a3a55] active:opacity-70 transition-opacity touch-manipulation"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-[#6b7280] text-sm font-medium">Website Orders</p>
+          <p className="text-white text-3xl font-bold mt-1">{total ?? '—'}</p>
+        </div>
+        <div className="p-2.5 rounded-lg bg-indigo-600">
+          <Globe size={20} className="text-white" />
+        </div>
+      </div>
+      <div className="mt-3 space-y-1">
+        <div className="flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1.5 text-orange-400"><span className="w-1.5 h-1.5 rounded-full bg-orange-400 flex-shrink-0" />New</span>
+          <span className="text-[#9ca3af] font-medium">{newCount ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1.5 text-blue-400"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />Shipped</span>
+          <span className="text-[#9ca3af] font-medium">{shipped ?? 0}</span>
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className="flex items-center gap-1.5 text-emerald-400"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />Delivered</span>
+          <span className="text-[#9ca3af] font-medium">{delivered ?? 0}</span>
+        </div>
+      </div>
+    </Link>
   )
 }
 
@@ -364,6 +398,7 @@ export default function Dashboard() {
   useRealtime('students', fetchAll)
   useRealtime('sales', fetchAll)
   useRealtime('allotments', fetchAll)
+  useRealtime('website_orders', fetchAll)
 
   async function fetchAll() {
     setLoading(true)
@@ -384,6 +419,10 @@ export default function Dashboard() {
       { count: totalIssuancesCount },
       { data: totalSalesQtyData },
       { data: totalAllotmentsQtyData },
+      { count: websiteOrdersTotal },
+      { count: websiteOrdersNew },
+      { count: websiteOrdersShipped },
+      { count: websiteOrdersDelivered },
     ] = await Promise.all([
       supabase.from('students').select('*', { count: 'exact', head: true }),
       supabase.from('books').select('*', { count: 'exact', head: true }).eq('is_active', true),
@@ -406,6 +445,10 @@ export default function Dashboard() {
       supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('is_reversed', false).eq('is_previous_issuance', false),
       supabase.rpc('get_total_sales_qty'),
       supabase.rpc('get_total_allotments_qty'),
+      supabase.from('website_orders').select('*', { count: 'exact', head: true }),
+      supabase.from('website_orders').select('*', { count: 'exact', head: true }).eq('shipped', false),
+      supabase.from('website_orders').select('*', { count: 'exact', head: true }).eq('shipped', true).eq('delivered', false),
+      supabase.from('website_orders').select('*', { count: 'exact', head: true }).eq('delivered', true),
     ])
 
     const issuedToday = new Set((issuedTodayData || []).map(r => r.student_id)).size
@@ -418,6 +461,7 @@ export default function Dashboard() {
     setStats({
       totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued,
       totalIssuedBooks, totalSalesQty, totalAllotmentsQty, totalDistributed,
+      websiteOrdersTotal, websiteOrdersNew, websiteOrdersShipped, websiteOrdersDelivered,
     })
     setRecentIssuances(recentData || [])
     setLowStock(stockData?.filter(s => s.available_qty <= s.low_stock_threshold) || [])
@@ -454,7 +498,7 @@ export default function Dashboard() {
 
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(7)].map((_, i) => (
+          {[...Array(8)].map((_, i) => (
             <div key={i} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-5 animate-pulse h-28" />
           ))}
         </div>
@@ -467,6 +511,7 @@ export default function Dashboard() {
           <StatCard icon={UserPlus}      label="New Students Today"   value={stats.newStudentsToday} sub="Enrolled today"     color="bg-purple-600"  onClick={() => setModalType('newStudents')} />
           <StatCard icon={ShoppingBag}   label="Bags Issued"          value={stats.bagsIssued}       sub="Total bags given out" color="bg-teal-600"  onClick={() => setModalType('bags')} />
           <StatCard icon={AlertTriangle} label="Low Stock Items"      value={lowStock.length}        sub="Need attention"     color="bg-orange-600"  onClick={() => setModalType('lowStock')} />
+          <WebsiteOrdersCard total={stats.websiteOrdersTotal} newCount={stats.websiteOrdersNew} shipped={stats.websiteOrdersShipped} delivered={stats.websiteOrdersDelivered} />
         </div>
       )}
 
