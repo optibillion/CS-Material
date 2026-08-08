@@ -1,10 +1,11 @@
-import { LayoutDashboard, Users, BookOpen, Package, Send, ShoppingCart, Building2, Archive, UserCog, FileText, ClipboardList, LogOut, Menu, X, GraduationCap, Tag, ShoppingBag, Globe } from 'lucide-react'
+import { LayoutDashboard, Users, BookOpen, Package, Send, ShoppingCart, Building2, Archive, UserCog, FileText, ClipboardList, LogOut, Menu, X, GraduationCap, Tag, ShoppingBag, Globe, PhoneMissed } from 'lucide-react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
 import { useNewOrdersCount } from '../hooks/useNewOrdersCount'
+import { useNewFailedOrdersCount } from '../hooks/useNewFailedOrdersCount'
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -17,6 +18,7 @@ const navItems = [
   { to: '/admin/inventory', label: 'Inventory', icon: Archive },
   { to: '/admin/sales', label: 'Sales', icon: ShoppingCart },
   { to: '/admin/website-orders', label: 'Website Orders', icon: Globe },
+  { to: '/admin/website-failed-orders', label: 'Website Failed Orders', icon: PhoneMissed },
   { to: '/admin/allotments', label: 'Distributors', icon: Building2 },
   { to: '/admin/bags', label: 'Bags', icon: ShoppingBag },
   { to: '/admin/users', label: 'Users', icon: UserCog },
@@ -37,6 +39,7 @@ export default function AdminLayout() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const newOrdersCount = useNewOrdersCount()
+  const newFailedOrdersCount = useNewFailedOrdersCount()
 
   function handleLogout() {
     logout()
@@ -89,6 +92,11 @@ export default function AdminLayout() {
               {to === '/admin/website-orders' && newOrdersCount > 0 && (
                 <span className="bg-[#bd0a0a] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                   {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                </span>
+              )}
+              {to === '/admin/website-failed-orders' && newFailedOrdersCount > 0 && (
+                <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {newFailedOrdersCount > 99 ? '99+' : newFailedOrdersCount}
                 </span>
               )}
             </NavLink>

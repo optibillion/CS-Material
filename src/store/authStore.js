@@ -13,6 +13,7 @@ export const useAuthStore = create(
       stockAccess: null,
       priceAccess: null,
       websiteOrdersAccess: null,
+      failedOrdersAccess: null,
       loginAt: null,
 
       login: async (username, password) => {
@@ -54,6 +55,7 @@ export const useAuthStore = create(
           stockAccess: fullAccess ? 'edit' : (safeProfile.can_stock || null),
           priceAccess: fullAccess ? 'edit' : (safeProfile.can_price || null),
           websiteOrdersAccess: fullAccess || !!safeProfile.can_view_website_orders,
+          failedOrdersAccess: fullAccess || !!safeProfile.can_view_failed_orders,
           loginAt: Date.now()
         })
         return safeProfile
@@ -66,7 +68,7 @@ export const useAuthStore = create(
     }),
     {
       name: 'csmdis-auth',
-      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, websiteOrdersAccess: state.websiteOrdersAccess, loginAt: state.loginAt })
+      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, websiteOrdersAccess: state.websiteOrdersAccess, failedOrdersAccess: state.failedOrdersAccess, loginAt: state.loginAt })
     }
   )
 )

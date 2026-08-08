@@ -1,10 +1,11 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
-import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag, Globe } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag, Globe, PhoneMissed } from 'lucide-react'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
 import { useNewOrdersCount } from '../hooks/useNewOrdersCount'
+import { useNewFailedOrdersCount } from '../hooks/useNewFailedOrdersCount'
 
 const baseNavItems = [
   { to: '/issuer', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -14,14 +15,16 @@ const baseNavItems = [
 ]
 
 export default function IssuerLayout() {
-  const { profile, logout, allotmentAccess, stockAccess, priceAccess, websiteOrdersAccess } = useAuthStore()
+  const { profile, logout, allotmentAccess, stockAccess, priceAccess, websiteOrdersAccess, failedOrdersAccess } = useAuthStore()
   const newOrdersCount = useNewOrdersCount(websiteOrdersAccess)
+  const newFailedOrdersCount = useNewFailedOrdersCount(failedOrdersAccess)
   const navItems = [
     ...baseNavItems,
     ...(allotmentAccess ? [{ to: '/issuer/allotments', label: 'Distributors', icon: Building2 }] : []),
     ...(stockAccess ? [{ to: '/issuer/inventory', label: 'Inventory', icon: Archive }] : []),
     ...(priceAccess ? [{ to: '/issuer/books', label: 'Book Prices', icon: Tag }] : []),
     ...(websiteOrdersAccess ? [{ to: '/issuer/website-orders', label: 'Website Orders', icon: Globe }] : []),
+    ...(failedOrdersAccess ? [{ to: '/issuer/website-failed-orders', label: 'Website Failed Orders', icon: PhoneMissed }] : []),
   ]
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -72,6 +75,11 @@ export default function IssuerLayout() {
               {to === '/issuer/website-orders' && newOrdersCount > 0 && (
                 <span className="bg-[#bd0a0a] text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                   {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                </span>
+              )}
+              {to === '/issuer/website-failed-orders' && newFailedOrdersCount > 0 && (
+                <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                  {newFailedOrdersCount > 99 ? '99+' : newFailedOrdersCount}
                 </span>
               )}
             </NavLink>
@@ -129,6 +137,11 @@ export default function IssuerLayout() {
                   {to === '/issuer/website-orders' && newOrdersCount > 0 && (
                     <span className="absolute -top-1.5 -right-2 bg-[#bd0a0a] text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
                       {newOrdersCount > 99 ? '99+' : newOrdersCount}
+                    </span>
+                  )}
+                  {to === '/issuer/website-failed-orders' && newFailedOrdersCount > 0 && (
+                    <span className="absolute -top-1.5 -right-2 bg-orange-500 text-white text-[9px] font-bold rounded-full min-w-[15px] h-[15px] flex items-center justify-center px-0.5">
+                      {newFailedOrdersCount > 99 ? '99+' : newFailedOrdersCount}
                     </span>
                   )}
                 </span>

@@ -196,6 +196,14 @@ async function toggleWebsiteOrders(user) {
   fetchUsers()
 }
 
+async function toggleFailedOrders(user) {
+  const newVal = !user.can_view_failed_orders
+  const { error } = await supabase.from('users').update({ can_view_failed_orders: newVal }).eq('id', user.id)
+  if (error) { toast.error('Failed to update permission'); return }
+  logAction('USER_UPDATED', `${user.name} (@${user.username}) — can_view_failed_orders set to ${newVal}`)
+  fetchUsers()
+}
+
   const filtered = users.filter(u =>
     u.name?.toLowerCase().includes(search.toLowerCase()) ||
     u.username?.toLowerCase().includes(search.toLowerCase()) ||
@@ -303,6 +311,13 @@ async function toggleWebsiteOrders(user) {
                         <button onClick={() => toggleWebsiteOrders(u)}
                           className={`text-xs px-2 py-0.5 rounded border font-medium transition-all ${u.can_view_website_orders ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
                           {u.can_view_website_orders ? 'On' : 'Off'}
+                        </button>
+                      </div>
+                      <div>
+                        <p className="text-[#6b7280] text-xs mb-1">Website Failed Orders</p>
+                        <button onClick={() => toggleFailedOrders(u)}
+                          className={`text-xs px-2 py-0.5 rounded border font-medium transition-all ${u.can_view_failed_orders ? 'bg-blue-500/20 border-blue-500/40 text-blue-400' : 'bg-[#12121f] border-[#2a2a45] text-[#4b5563] hover:text-[#9ca3af]'}`}>
+                          {u.can_view_failed_orders ? 'On' : 'Off'}
                         </button>
                       </div>
                     </div>

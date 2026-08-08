@@ -19,6 +19,7 @@ import AdminBundles from './pages/admin/Bundles'
 import AdminIssuances from './pages/admin/Issuances'
 import AdminSales from './pages/admin/Sales'
 import AdminWebsiteOrders from './pages/admin/WebsiteOrders'
+import AdminWebsiteFailedOrders from './pages/admin/WebsiteFailedOrders'
 import AdminAllotments from './pages/admin/Allotments'
 import AdminInventory from './pages/admin/Inventory'
 import AdminUsers from './pages/admin/Users'
@@ -110,6 +111,7 @@ export default function App() {
           <Route path="issuances" element={<AdminIssuances />} />
           <Route path="sales" element={<AdminSales />} />
           <Route path="website-orders" element={<AdminWebsiteOrders />} />
+          <Route path="website-failed-orders" element={<AdminWebsiteFailedOrders />} />
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
@@ -136,6 +138,7 @@ export default function App() {
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="books" element={<BookPrices />} />
           <Route path="website-orders" element={<AdminWebsiteOrders />} />
+          <Route path="website-failed-orders" element={<AdminWebsiteFailedOrders />} />
         </Route>
 
         {/* Accountant routes */}
