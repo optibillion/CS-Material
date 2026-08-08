@@ -88,10 +88,10 @@ export default function SalesView() {
           className={`text-xs px-3 py-2 rounded-lg border font-medium transition-all ${showAll ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#2a2a45] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
           All
         </button>
-        <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+        <input type="date" lang="en-GB" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
           className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
         <span className="text-[#6b7280] text-xs">to</span>
-        <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+        <input type="date" lang="en-GB" value={dateTo} onChange={e => setDateTo(e.target.value)}
           className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
         {(dateFrom !== today || dateTo !== today) && (
           <button onClick={() => { setDateFrom(today); setDateTo(today) }}
