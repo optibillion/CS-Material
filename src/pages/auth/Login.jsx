@@ -23,7 +23,7 @@ export default function Login() {
     try {
       const user = await login(username, password)
       toast.success(`Welcome, ${user.name}!`)
-      if (user.role === 'admin') {
+      if (user.role === 'admin' || user.role === 'view_admin') {
         navigate('/admin')
       } else if (user.role === 'accountant') {
         navigate('/accountant/allotments')

@@ -61,8 +61,9 @@ function ProtectedFullAdmin({ children }) {
 }
 
 function ProtectedIssuer({ children }) {
-  const { user, isAccountant } = useAuthStore()
+  const { user, isAccountant, isViewAdmin } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
+  if (isViewAdmin) return <Navigate to="/admin" replace />
   if (isAccountant) return <Navigate to="/accountant" replace />
   return children
 }
