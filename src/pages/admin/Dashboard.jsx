@@ -77,14 +77,21 @@ function WebsiteOrdersCard({ total, newCount, shipped, delivered }) {
   )
 }
 
-function BreakdownStat({ icon: Icon, label, value, color }) {
+function BreakdownStat({ icon: Icon, label, value, color, mrp }) {
   return (
     <div className="flex items-center gap-3 bg-[#12121f] border border-[#2a2a45] rounded-lg px-4 py-3">
       <div className={`p-2 rounded-lg bg-[#1a1a2e] ${color}`}>
         <Icon size={16} />
       </div>
       <div className="min-w-0">
-        <p className="text-white text-xl font-bold leading-tight">{value ?? '—'}</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-white text-xl font-bold leading-tight">{value ?? '—'}</p>
+          {mrp != null && (
+            <span className="text-[#f0a500] text-xs font-semibold bg-[#f0a500]/10 border border-[#f0a500]/30 rounded-full px-2 py-0.5 whitespace-nowrap">
+              MRP ₹{Math.round(mrp).toLocaleString('en-IN')}
+            </span>
+          )}
+        </div>
         <p className="text-[#6b7280] text-xs">{label}</p>
       </div>
     </div>
@@ -419,6 +426,8 @@ export default function Dashboard() {
       { count: totalIssuancesCount },
       { data: totalSalesQtyData },
       { data: totalAllotmentsQtyData },
+      { data: totalSalesMrpData },
+      { data: totalAllotmentsMrpData },
       { count: websiteOrdersTotal },
       { count: websiteOrdersNew },
       { count: websiteOrdersShipped },
@@ -445,6 +454,8 @@ export default function Dashboard() {
       supabase.from('issuances').select('*', { count: 'exact', head: true }).eq('is_reversed', false).eq('is_previous_issuance', false),
       supabase.rpc('get_total_sales_qty'),
       supabase.rpc('get_total_allotments_qty'),
+      supabase.rpc('get_total_sales_mrp'),
+      supabase.rpc('get_total_allotments_mrp'),
       supabase.from('website_orders').select('*', { count: 'exact', head: true }),
       supabase.from('website_orders').select('*', { count: 'exact', head: true }).eq('shipped', false),
       supabase.from('website_orders').select('*', { count: 'exact', head: true }).eq('shipped', true).eq('delivered', false),
@@ -457,10 +468,12 @@ export default function Dashboard() {
     const totalIssuedBooks = totalIssuancesCount || 0
     const totalSalesQty = totalSalesQtyData || 0
     const totalAllotmentsQty = totalAllotmentsQtyData || 0
+    const totalSalesMrp = parseFloat(totalSalesMrpData) || 0
+    const totalAllotmentsMrp = parseFloat(totalAllotmentsMrpData) || 0
     const totalDistributed = totalIssuedBooks + totalSalesQty + totalAllotmentsQty
     setStats({
       totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued,
-      totalIssuedBooks, totalSalesQty, totalAllotmentsQty, totalDistributed,
+      totalIssuedBooks, totalSalesQty, totalAllotmentsQty, totalSalesMrp, totalAllotmentsMrp, totalDistributed,
       websiteOrdersTotal, websiteOrdersNew, websiteOrdersShipped, websiteOrdersDelivered,
     })
     setRecentIssuances(recentData || [])
@@ -490,8 +503,8 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
             <BreakdownStat icon={Send}         label="Issued to Students" value={stats.totalIssuedBooks}   color="text-emerald-400" />
-            <BreakdownStat icon={ShoppingCart}  label="Sold (Sales)"        value={stats.totalSalesQty}      color="text-[#f0a500]" />
-            <BreakdownStat icon={Truck}         label="Given to Distributors" value={stats.totalAllotmentsQty} color="text-purple-400" />
+            <BreakdownStat icon={ShoppingCart}  label="Sold (Sales)"        value={stats.totalSalesQty}      color="text-[#f0a500]" mrp={stats.totalSalesMrp} />
+            <BreakdownStat icon={Truck}         label="Given to Distributors" value={stats.totalAllotmentsQty} color="text-purple-400" mrp={stats.totalAllotmentsMrp} />
           </div>
         </div>
       )}
