@@ -115,7 +115,7 @@ function CreateStudentModal({ open, onClose, onSave, batches, prefillName }) {
 }
 
 export default function AdminIssue() {
-  const { profile } = useAuthStore()
+  const { profile, isViewAdmin } = useAuthStore()
   const [searchParams] = useSearchParams()
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -372,6 +372,15 @@ export default function AdminIssue() {
     <div className="p-6 space-y-4">
       <div className="h-8 bg-[#2a2a45] rounded w-48 animate-pulse" />
       <div className="h-32 bg-[#1a1a2e] border border-[#2a2a45] rounded-xl animate-pulse" />
+    </div>
+  )
+
+  if (isViewAdmin) return (
+    <div className="p-6">
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-10 text-center">
+        <p className="text-white font-semibold mb-1">View-only access</p>
+        <p className="text-[#6b7280] text-sm">Issuing material isn't available for view-only admins.</p>
+      </div>
     </div>
   )
 

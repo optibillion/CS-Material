@@ -27,7 +27,7 @@ function ReversalModal({ open, onClose, onConfirm, issuance }) {
 }
 
 export default function Issuances() {
-  const { profile } = useAuthStore()
+  const { profile, isViewAdmin } = useAuthStore()
   const [issuances, setIssuances] = useState([])
   const [totalCount, setTotalCount] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -102,7 +102,7 @@ export default function Issuances() {
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{i.users?.name||'—'}</td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{format(new Date(i.issued_at),'dd MMM yy, hh:mm a')}</td>
                 <td className="px-5 py-3">{i.is_reversed?<span className="text-xs bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full">Reversed</span>:<span className="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">Active</span>}</td>
-                <td className="px-5 py-3">{!i.is_reversed&&<button onClick={()=>setReversing(i)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12}/>Reverse</button>}</td>
+                <td className="px-5 py-3">{!i.is_reversed&&!isViewAdmin&&<button onClick={()=>setReversing(i)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12}/>Reverse</button>}</td>
               </tr>
             ))}
           </tbody>
@@ -126,7 +126,7 @@ export default function Issuances() {
             </div>
             <p className="text-[#9ca3af] text-sm mb-1">{i.books?.title}</p>
             <p className="text-[#6b7280] text-xs mb-3">by {i.users?.name||'—'} · {format(new Date(i.issued_at),'dd MMM yy, hh:mm a')}</p>
-            {!i.is_reversed&&<button onClick={()=>setReversing(i)} className="w-full flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12}/>Reverse Issuance</button>}
+            {!i.is_reversed&&!isViewAdmin&&<button onClick={()=>setReversing(i)} className="w-full flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all"><RotateCcw size={12}/>Reverse Issuance</button>}
           </div>
         ))}
       </div>

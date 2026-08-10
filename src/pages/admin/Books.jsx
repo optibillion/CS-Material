@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Search, BookOpen, Eye, EyeOff, Package } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
+import { useAuthStore } from '../../store/authStore'
 
 const CATEGORIES = ['booklet', 'notes', 'test_series', 'paper_set']
 const MEDIUMS = ['hindi', 'english', 'both']
@@ -134,6 +135,7 @@ function BundlePromptModal({ open, onClose, onConfirm, bundles, bookTitle }) {
 }
 
 export default function Books() {
+  const { isViewAdmin } = useAuthStore()
   const [books, setBooks] = useState([])
   const [issuanceCounts, setIssuanceCounts] = useState({})
   const [stockMap, setStockMap] = useState({})
@@ -245,10 +247,12 @@ const examOptions = [...new Set(books.map(b => b.exam_level).filter(Boolean))].s
           <h1 className="text-white text-2xl font-bold">Books</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{books.length} total in catalogue</p>
         </div>
-        <button onClick={() => { setEditing(null); setModalOpen(true) }}
-          className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-          <Plus size={16} /> Add Book
-        </button>
+        {!isViewAdmin && (
+          <button onClick={() => { setEditing(null); setModalOpen(true) }}
+            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+            <Plus size={16} /> Add Book
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -342,10 +346,10 @@ const examOptions = [...new Set(books.map(b => b.exam_level).filter(Boolean))].s
                     : <span className="text-[#6b7280] text-xs">—</span>}
                 </td>
                 <td className="px-5 py-3"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${book.is_active?'bg-emerald-500/20 text-emerald-400 border-emerald-500/30':'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>{book.is_active?'Active':'Inactive'}</span></td>
-                <td className="px-5 py-3"><div className="flex items-center gap-2">
+                <td className="px-5 py-3">{isViewAdmin ? <span className="text-[#4b5563] text-xs">View only</span> : <div className="flex items-center gap-2">
                   <button onClick={()=>{setEditing(book);setModalOpen(true)}} className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">Edit</button>
                   <button onClick={()=>toggleActive(book)} className="text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all flex items-center gap-1">{book.is_active?<EyeOff size={12}/>:<Eye size={12}/>}{book.is_active?'Deactivate':'Activate'}</button>
-                </div></td>
+                </div>}</td>
               </tr>
             )})}
           </tbody>
@@ -401,10 +405,12 @@ const examOptions = [...new Set(books.map(b => b.exam_level).filter(Boolean))].s
                 {isLow && !isOut && <p className="text-orange-400 text-xs mt-0.5">Low stock</p>}
               </div>
             )}
+            {!isViewAdmin && (
             <div className="flex gap-2">
               <button onClick={()=>{setEditing(book);setModalOpen(true)}} className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">Edit</button>
               <button onClick={()=>toggleActive(book)} className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">{book.is_active?'Deactivate':'Activate'}</button>
             </div>
+            )}
           </div>
         )})}
       </div>

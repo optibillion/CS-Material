@@ -8,7 +8,7 @@ import { logAction } from '../../lib/audit'
 import ReceiptModal from '../../components/ReceiptModal'
 
 export default function Sales() {
-  const { profile } = useAuthStore()
+  const { profile, isViewAdmin } = useAuthStore()
   const [sales, setSales] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -247,10 +247,12 @@ export default function Sales() {
           <h1 className="text-white text-2xl font-bold">Sales</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{allTimeCount ?? transactions.length} total transactions</p>
         </div>
-        <button onClick={openRecordSale}
-          className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-          <Plus size={15} /> Record Sale
-        </button>
+        {!isViewAdmin && (
+          <button onClick={openRecordSale}
+            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+            <Plus size={15} /> Record Sale
+          </button>
+        )}
       </div>
 
       {/* Date filter */}
@@ -375,7 +377,7 @@ export default function Sales() {
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-xs font-medium transition-all">
                 <Receipt size={13} /> View Receipt
               </button>
-              {!txn.all_returned && (
+              {!txn.all_returned && !isViewAdmin && (
                 <button onClick={() => handleReturn(txn)}
                   className="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all">
                   <RotateCcw size={12} /> Mark Returned

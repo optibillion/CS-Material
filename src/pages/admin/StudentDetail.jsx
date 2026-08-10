@@ -191,7 +191,7 @@ function BagConfirmModal({ open, onClose, onConfirm, studentName, action }) {
 export default function StudentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { profile, isAdmin } = useAuthStore()
+  const { profile, isAdmin, isViewAdmin } = useAuthStore()
   const [student, setStudent] = useState(null)
   const [issuances, setIssuances] = useState([])
   const [batches, setBatches] = useState([])
@@ -337,7 +337,7 @@ export default function StudentDetail() {
                   </div>
                 )}
               </div>
-              {!photoUploading && (
+              {!photoUploading && !isViewAdmin && (
                 <div className="flex gap-1">
                   <label className="flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white cursor-pointer transition-all">
                     <Upload size={10} /> <span>Upload</span>
@@ -367,7 +367,7 @@ export default function StudentDetail() {
             <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border font-medium ${student.bag_issued ? 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' : 'bg-[#2a2a45] text-[#6b7280] border-[#2a2a45]'}`}>
               <ShoppingBag size={11} /> {student.bag_issued ? 'Bag issued' : 'No bag'}
             </span>
-            {!student.bag_issued ? (
+            {!isViewAdmin && (!student.bag_issued ? (
               <button onClick={() => setBagConfirm('issue')}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#f0a500] hover:bg-[#d4920a] text-black font-semibold transition-all">
                 <ShoppingBag size={13} /> Issue Bag
@@ -377,15 +377,19 @@ export default function StudentDetail() {
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-orange-500/20 hover:text-orange-400 text-[#9ca3af] transition-all">
                 <ShoppingBag size={13} /> Revoke Bag
               </button>
+            ))}
+            {!isViewAdmin && (
+              <button onClick={() => navigate(`/admin/issue?student=${id}`)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white transition-all">
+                <Send size={13} /> Issue Books
+              </button>
             )}
-            <button onClick={() => navigate(`/admin/issue?student=${id}`)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white transition-all">
-              <Send size={13} /> Issue Books
-            </button>
-            <button onClick={() => setEditing(true)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
-              <Edit size={13} /> Edit
-            </button>
+            {!isViewAdmin && (
+              <button onClick={() => setEditing(true)}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
+                <Edit size={13} /> Edit
+              </button>
+            )}
             {isAdmin && (
               <button onClick={handleToggleActive}
                 className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all ${student.is_active === false ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400' : 'bg-[#2a2a45] hover:bg-orange-500/20 hover:text-orange-400 text-[#9ca3af]'}`}>
@@ -445,10 +449,12 @@ export default function StudentDetail() {
                   <p className="text-[#6b7280] text-xs">{i.books?.category} · {i.books?.medium} · by {i.users?.name || '—'} · {format(new Date(i.issued_at), 'dd MMM yy, hh:mm a')}</p>
                 </div>
               </div>
-              <button onClick={() => setReversing(i)}
-                className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all flex-shrink-0">
-                <RotateCcw size={12} /> Reverse
-              </button>
+              {!isViewAdmin && (
+                <button onClick={() => setReversing(i)}
+                  className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all flex-shrink-0">
+                  <RotateCcw size={12} /> Reverse
+                </button>
+              )}
             </div>
           ))}
         </div>

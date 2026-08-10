@@ -587,7 +587,7 @@ function BulkUploadModal({ open, onClose, onDone, batches, profile }) {
 
 export default function Students() {
   const navigate = useNavigate()
-  const { profile } = useAuthStore()
+  const { profile, isViewAdmin } = useAuthStore()
   const [students, setStudents] = useState([])
   const [batches, setBatches] = useState([])
   const [loading, setLoading] = useState(true)
@@ -732,7 +732,7 @@ export default function Students() {
           <p className="text-[#6b7280] text-sm mt-0.5">{students.filter(s => s.is_active !== false).length} active enrolled</p>
         </div>
         <div className="flex items-center gap-2">
-          {!showInactive && (
+          {!showInactive && !isViewAdmin && (
             <>
               <button onClick={() => setBulkOpen(true)}
                 className="flex items-center gap-2 bg-[#2a2a45] hover:bg-[#3a3a55] text-[#f0a500] border border-[#f0a500]/30 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
@@ -833,6 +833,9 @@ export default function Students() {
                 </td>
                 <td className="px-4 py-3 text-[#9ca3af] text-sm cursor-pointer" onClick={()=>navigate(`/admin/students/${s.id}`)}>{s.admission_date?format(new Date(s.admission_date),'dd MMM yyyy'):'—'}</td>
                 <td className="px-4 py-3">
+                  {isViewAdmin ? (
+                    <span className="text-[#4b5563] text-xs">View only</span>
+                  ) : (
                   <div className="flex items-center gap-1.5">
                     <button onClick={e => { e.stopPropagation(); setEditing(s) }}
                       className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
@@ -849,6 +852,7 @@ export default function Students() {
                       </button>
                     )}
                   </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -884,19 +888,25 @@ export default function Students() {
               <p className="text-[#6b7280] text-xs">📅 {s.admission_date?format(new Date(s.admission_date),'dd MMM yyyy'):'—'}</p>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setEditing(s)}
-                className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
-                <Pencil size={11} /> Edit
-              </button>
-              <button onClick={e => toggleActive(s, e)}
-                className={`flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg transition-all ${s.is_active === false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#2a2a45] text-[#9ca3af]'}`}>
-                {s.is_active === false ? <><UserCheck size={11}/> Activate</> : <><UserX size={11}/> Deactivate</>}
-              </button>
+              {!isViewAdmin && (
+                <>
+                  <button onClick={() => setEditing(s)}
+                    className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all">
+                    <Pencil size={11} /> Edit
+                  </button>
+                  <button onClick={e => toggleActive(s, e)}
+                    className={`flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg transition-all ${s.is_active === false ? 'bg-emerald-500/20 text-emerald-400' : 'bg-[#2a2a45] text-[#9ca3af]'}`}>
+                    {s.is_active === false ? <><UserCheck size={11}/> Activate</> : <><UserX size={11}/> Deactivate</>}
+                  </button>
+                </>
+              )}
               {s.is_active === false ? (
-                <button onClick={e => { e.stopPropagation(); setDeleteConfirm(s) }}
-                  className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-red-500/10 text-red-400 transition-all">
-                  <Trash2 size={11} /> Delete
-                </button>
+                !isViewAdmin && (
+                  <button onClick={e => { e.stopPropagation(); setDeleteConfirm(s) }}
+                    className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-red-500/10 text-red-400 transition-all">
+                    <Trash2 size={11} /> Delete
+                  </button>
+                )
               ) : (
                 <button onClick={()=>navigate(`/admin/students/${s.id}`)}
                   className="flex-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">

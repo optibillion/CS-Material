@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
+import { useAuthStore } from '../../store/authStore'
 
 function Modal({ open, onClose, onSave, initial }) {
   const [name, setName] = useState('')
@@ -31,6 +32,7 @@ function Modal({ open, onClose, onSave, initial }) {
 }
 
 export default function Courses() {
+  const { isViewAdmin } = useAuthStore()
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -77,10 +79,12 @@ export default function Courses() {
           <h1 className="text-white text-2xl font-bold">Courses</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{courses.length} total courses</p>
         </div>
-        <button onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-          <Plus size={16} /> Add Course
-        </button>
+        {!isViewAdmin && (
+          <button onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+            <Plus size={16} /> Add Course
+          </button>
+        )}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {loading ? [...Array(6)].map((_, i) => (
@@ -98,6 +102,7 @@ export default function Courses() {
                 </span>
               </div>
             </div>
+            {!isViewAdmin && (
             <div className="flex flex-col gap-1.5 items-end ml-3">
               {!c.is_default && (
                 <button onClick={() => setEditing(c)}
@@ -112,6 +117,7 @@ export default function Courses() {
                 </button>
               )}
             </div>
+            )}
           </div>
         ))}
       </div>

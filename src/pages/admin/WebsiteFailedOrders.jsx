@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Search, MapPin, Phone, X, AlertTriangle, User, PhoneCall, CheckSquare, Square, CreditCard } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '../../store/authStore'
 
 function safeFormat(dateStr, fmt) {
   if (!dateStr) return '—'
@@ -40,7 +41,7 @@ function Field({ label, value }) {
   )
 }
 
-function LeadDetailModal({ lead, onClose, onToggleContacted }) {
+function LeadDetailModal({ lead, onClose, onToggleContacted, readOnly }) {
   if (!lead) return null
   const contacted = lead.status === 'Contacted'
   const address = [lead.house, lead.locality, lead.city, lead.district, lead.state, lead.pincode].filter(Boolean).join(', ')
@@ -67,12 +68,20 @@ function LeadDetailModal({ lead, onClose, onToggleContacted }) {
 
         <div className="px-6 py-5 overflow-y-auto space-y-0">
           <Section icon={PhoneCall} label="Follow-up">
-            <button onClick={() => onToggleContacted(lead)}
-              className="flex items-center gap-2 text-sm transition-colors">
-              {contacted ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
-              <span className={contacted ? 'text-white font-medium' : 'text-[#9ca3af]'}>Contacted</span>
-              {contacted && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
-            </button>
+            {readOnly ? (
+              <div className="flex items-center gap-2 text-sm">
+                {contacted ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                <span className={contacted ? 'text-white font-medium' : 'text-[#9ca3af]'}>Contacted</span>
+                {contacted && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
+              </div>
+            ) : (
+              <button onClick={() => onToggleContacted(lead)}
+                className="flex items-center gap-2 text-sm transition-colors">
+                {contacted ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                <span className={contacted ? 'text-white font-medium' : 'text-[#9ca3af]'}>Contacted</span>
+                {contacted && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
+              </button>
+            )}
           </Section>
 
           <Section icon={AlertTriangle} label="Why It Failed">
@@ -114,6 +123,7 @@ function LeadDetailModal({ lead, onClose, onToggleContacted }) {
 }
 
 export default function WebsiteFailedOrders() {
+  const { isViewAdmin } = useAuthStore()
   const [leads, setLeads] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -243,6 +253,7 @@ export default function WebsiteFailedOrders() {
         lead={selectedLead}
         onClose={() => setSelectedLead(null)}
         onToggleContacted={handleToggleContacted}
+        readOnly={isViewAdmin}
       />
     </div>
   )

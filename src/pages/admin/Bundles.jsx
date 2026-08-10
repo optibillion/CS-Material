@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Package, Pencil } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
+import { useAuthStore } from '../../store/authStore'
 
 function Modal({ open, onClose, onSave, books, initial }) {
   const [name, setName] = useState('')
@@ -115,6 +116,7 @@ function Modal({ open, onClose, onSave, books, initial }) {
 }
 
 export default function Bundles() {
+  const { isViewAdmin } = useAuthStore()
   const [bundles, setBundles] = useState([])
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -170,10 +172,12 @@ export default function Bundles() {
           <h1 className="text-white text-2xl font-bold">Bundles</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">Group books into bundles for quick issuance</p>
         </div>
-        <button onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-          <Plus size={16} /> Create Bundle
-        </button>
+        {!isViewAdmin && (
+          <button onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+            <Plus size={16} /> Create Bundle
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -207,6 +211,7 @@ export default function Bundles() {
                 ))}
               </div>
               <p className="text-[#6b7280] text-xs mb-3">{b.bundle_books?.length} books</p>
+              {!isViewAdmin && (
               <div className="flex gap-2">
                 <button onClick={() => setEditing(b)}
                   className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
@@ -217,6 +222,7 @@ export default function Bundles() {
                   {b.is_active ? 'Deactivate' : 'Activate'}
                 </button>
               </div>
+              )}
             </div>
           ))}
         </div>

@@ -46,9 +46,17 @@ import IssuerStudentDetail from './pages/issuer/StudentDetail'
 import Bags from './pages/shared/Bags'
 
 function ProtectedAdmin({ children }) {
+  const { user, isAdmin, isViewAdmin } = useAuthStore()
+  if (!user) return <Navigate to="/login" replace />
+  if (!isAdmin && !isViewAdmin) return <Navigate to="/issuer" replace />
+  return children
+}
+
+// Guards routes that a view-only admin must never reach at all (Users, Audit Log)
+function ProtectedFullAdmin({ children }) {
   const { user, isAdmin } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
-  if (!isAdmin) return <Navigate to="/issuer" replace />
+  if (!isAdmin) return <Navigate to="/admin" replace />
   return children
 }
 
@@ -115,9 +123,9 @@ export default function App() {
           <Route path="allotments" element={<AdminAllotments />} />
           <Route path="allotments/:id" element={<InstitutionDetail />} />
           <Route path="inventory" element={<AdminInventory />} />
-          <Route path="users" element={<AdminUsers />} />
+          <Route path="users" element={<ProtectedFullAdmin><AdminUsers /></ProtectedFullAdmin>} />
           <Route path="reports" element={<AdminReports />} />
-          <Route path="audit" element={<AdminAuditLog />} />
+          <Route path="audit" element={<ProtectedFullAdmin><AdminAuditLog /></ProtectedFullAdmin>} />
           <Route path="batches" element={<AdminBatches />} />
           <Route path="courses" element={<AdminCourses />} />
           <Route path="issue" element={<AdminIssue />} />

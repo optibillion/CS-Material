@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Plus, Search, Pencil, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
+import { useAuthStore } from '../../store/authStore'
 
 function suggestCode(name) {
   const words = name.trim().split(/\s+/)
@@ -81,6 +82,7 @@ function Modal({ open, onClose, onSave, initial }) {
 }
 
 export default function Batches() {
+  const { isViewAdmin } = useAuthStore()
   const [batches, setBatches] = useState([])
   const [studentCounts, setStudentCounts] = useState({})
   const [loading, setLoading] = useState(true)
@@ -146,10 +148,12 @@ export default function Batches() {
           <h1 className="text-white text-2xl font-bold">Batches</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{batches.length} total batches</p>
         </div>
-        <button onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-          <Plus size={16} /> Add Batch
-        </button>
+        {!isViewAdmin && (
+          <button onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+            <Plus size={16} /> Add Batch
+          </button>
+        )}
       </div>
       <div className="relative">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
@@ -194,6 +198,7 @@ export default function Batches() {
                   </span>
                 </td>
                 <td className="px-5 py-3">
+                  {isViewAdmin ? <span className="text-[#4b5563] text-xs">View only</span> : (
                   <div className="flex items-center gap-2">
                     <button onClick={() => setEditing(b)}
                       className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
@@ -204,6 +209,7 @@ export default function Batches() {
                       {b.is_active ? 'Deactivate' : 'Activate'}
                     </button>
                   </div>
+                  )}
                 </td>
               </tr>
             ))}
@@ -233,6 +239,7 @@ export default function Batches() {
                 </span>
               </div>
             </div>
+            {!isViewAdmin && (
             <div className="flex gap-2">
               <button onClick={() => setEditing(b)}
                 className="flex-1 flex items-center justify-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] transition-all">
@@ -243,6 +250,7 @@ export default function Batches() {
                 {b.is_active ? 'Deactivate' : 'Activate'}
               </button>
             </div>
+            )}
           </div>
         ))}
       </div>

@@ -35,11 +35,14 @@ const bottomNav = [
 ]
 
 export default function AdminLayout() {
-  const { profile, logout } = useAuthStore()
+  const { profile, logout, isViewAdmin } = useAuthStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const newOrdersCount = useNewOrdersCount()
   const newFailedOrdersCount = useNewFailedOrdersCount()
+  const visibleNavItems = isViewAdmin
+    ? navItems.filter(({ to }) => to !== '/admin/users' && to !== '/admin/audit')
+    : navItems
 
   function handleLogout() {
     logout()
@@ -68,7 +71,7 @@ export default function AdminLayout() {
 
         <div className="px-5 py-3 border-b border-[#2a2a45]">
           <span className="text-xs bg-[#bd0a0a]/20 text-[#bd0a0a] border border-[#bd0a0a]/30 px-2 py-1 rounded-full font-medium">
-            Admin
+            {isViewAdmin ? 'Admin (View Only)' : 'Admin'}
           </span>
         </div>
 
@@ -78,7 +81,7 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 overflow-y-auto py-3 px-3 space-y-0.5">
-          {navItems.map(({ to, label, icon: Icon, end }) => (
+          {visibleNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>

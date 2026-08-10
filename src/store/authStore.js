@@ -9,6 +9,7 @@ export const useAuthStore = create(
       profile: null,
       isAdmin: false,
       isAccountant: false,
+      isViewAdmin: false,
       allotmentAccess: null,
       stockAccess: null,
       priceAccess: null,
@@ -45,17 +46,20 @@ export const useAuthStore = create(
 
         const isAdmin = safeProfile.role === 'admin'
         const isAccountant = safeProfile.role === 'accountant'
+        const isViewAdmin = safeProfile.role === 'view_admin'
         const fullAccess = isAdmin || isAccountant
         set({
           user: safeProfile,
           profile: safeProfile,
           isAdmin,
           isAccountant,
-          allotmentAccess: fullAccess ? 'edit' : (safeProfile.can_allot || null),
-          stockAccess: fullAccess ? 'edit' : (safeProfile.can_stock || null),
-          priceAccess: fullAccess ? 'edit' : (safeProfile.can_price || null),
-          websiteOrdersAccess: fullAccess || !!safeProfile.can_view_website_orders,
-          failedOrdersAccess: fullAccess || !!safeProfile.can_view_failed_orders,
+          isViewAdmin,
+          // view_admin sees everything admin sees, but only ever at 'view' level
+          allotmentAccess: fullAccess ? 'edit' : (isViewAdmin ? 'view' : (safeProfile.can_allot || null)),
+          stockAccess: fullAccess ? 'edit' : (isViewAdmin ? 'view' : (safeProfile.can_stock || null)),
+          priceAccess: fullAccess ? 'edit' : (isViewAdmin ? 'view' : (safeProfile.can_price || null)),
+          websiteOrdersAccess: fullAccess || isViewAdmin || !!safeProfile.can_view_website_orders,
+          failedOrdersAccess: fullAccess || isViewAdmin || !!safeProfile.can_view_failed_orders,
           loginAt: Date.now()
         })
         return safeProfile
@@ -63,12 +67,12 @@ export const useAuthStore = create(
 
       logout: async () => {
         await supabase.auth.signOut()
-        set({ user: null, profile: null, isAdmin: false, isAccountant: false, allotmentAccess: null, stockAccess: null, priceAccess: null, loginAt: null })
+        set({ user: null, profile: null, isAdmin: false, isAccountant: false, isViewAdmin: false, allotmentAccess: null, stockAccess: null, priceAccess: null, loginAt: null })
       }
     }),
     {
       name: 'csmdis-auth',
-      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, websiteOrdersAccess: state.websiteOrdersAccess, failedOrdersAccess: state.failedOrdersAccess, loginAt: state.loginAt })
+      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, isViewAdmin: state.isViewAdmin, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, websiteOrdersAccess: state.websiteOrdersAccess, failedOrdersAccess: state.failedOrdersAccess, loginAt: state.loginAt })
     }
   )
 )

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { Search, MapPin, Phone, Package, X, CreditCard, User, Truck, CheckSquare, Square } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '../../store/authStore'
 
 function safeFormat(dateStr, fmt) {
   if (!dateStr) return '—'
@@ -48,7 +49,7 @@ function Field({ label, value }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver }) {
+function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, readOnly }) {
   const [awbInput, setAwbInput] = useState('')
   const [showAwbInput, setShowAwbInput] = useState(false)
 
@@ -87,11 +88,17 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver }) {
                     <p className="text-[#6b7280] text-xs mt-0.5 break-all">AWB / Tracking: <span className="text-[#9ca3af] font-mono">{order.shipped_awb || '—'}</span></p>
                     <p className="text-[#4b5563] text-xs mt-0.5">
                       {safeFormat(order.shipped_at, 'dd MMM yyyy, hh:mm a')}
-                      {' · '}
-                      <button onClick={() => onUnship(order)} className="text-[#6b7280] hover:text-red-400 underline">Undo</button>
+                      {!readOnly && (
+                        <>
+                          {' · '}
+                          <button onClick={() => onUnship(order)} className="text-[#6b7280] hover:text-red-400 underline">Undo</button>
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
+              ) : readOnly ? (
+                <p className="text-[#9ca3af] text-sm">Not shipped yet</p>
               ) : (
                 <div>
                   <button onClick={() => setShowAwbInput(true)}
@@ -113,12 +120,20 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver }) {
               )}
 
               {order.shipped && (
-                <button onClick={() => onDeliver(order, !order.delivered)}
-                  className="flex items-center gap-2 text-sm transition-colors">
-                  {order.delivered ? <CheckSquare size={16} className="text-blue-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
-                  <span className={order.delivered ? 'text-white font-medium' : 'text-[#9ca3af]'}>Delivered</span>
-                  {order.delivered && order.delivered_at && <span className="text-[#4b5563] text-xs">· {safeFormat(order.delivered_at, 'dd MMM yyyy, hh:mm a')}</span>}
-                </button>
+                readOnly ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    {order.delivered ? <CheckSquare size={16} className="text-blue-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                    <span className={order.delivered ? 'text-white font-medium' : 'text-[#9ca3af]'}>Delivered</span>
+                    {order.delivered && order.delivered_at && <span className="text-[#4b5563] text-xs">· {safeFormat(order.delivered_at, 'dd MMM yyyy, hh:mm a')}</span>}
+                  </div>
+                ) : (
+                  <button onClick={() => onDeliver(order, !order.delivered)}
+                    className="flex items-center gap-2 text-sm transition-colors">
+                    {order.delivered ? <CheckSquare size={16} className="text-blue-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                    <span className={order.delivered ? 'text-white font-medium' : 'text-[#9ca3af]'}>Delivered</span>
+                    {order.delivered && order.delivered_at && <span className="text-[#4b5563] text-xs">· {safeFormat(order.delivered_at, 'dd MMM yyyy, hh:mm a')}</span>}
+                  </button>
+                )
               )}
             </div>
           </Section>
@@ -171,6 +186,7 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver }) {
 }
 
 export default function WebsiteOrders() {
+  const { isViewAdmin } = useAuthStore()
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -339,6 +355,7 @@ export default function WebsiteOrders() {
         onShip={handleShip}
         onUnship={handleUnship}
         onDeliver={handleDeliver}
+        readOnly={isViewAdmin}
       />
     </div>
   )
