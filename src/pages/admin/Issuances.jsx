@@ -29,6 +29,7 @@ function ReversalModal({ open, onClose, onConfirm, issuance }) {
 export default function Issuances() {
   const { profile } = useAuthStore()
   const [issuances, setIssuances] = useState([])
+  const [totalCount, setTotalCount] = useState(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [reversing, setReversing] = useState(null)
@@ -37,10 +38,13 @@ export default function Issuances() {
 
   async function fetchIssuances() {
     setLoading(true)
-    const { data } = await supabase.from('issuances')
-      .select('*, students(name, student_id), books(title), users!issuances_issued_by_fkey(name)')
-      .order('issued_at', { ascending: false }).limit(200)
-    setIssuances(data || []); setLoading(false)
+    const [{ data }, { count }] = await Promise.all([
+      supabase.from('issuances')
+        .select('*, students(name, student_id), books(title), users!issuances_issued_by_fkey(name)')
+        .order('issued_at', { ascending: false }).limit(200),
+      supabase.from('issuances').select('*', { count: 'exact', head: true }),
+    ])
+    setIssuances(data || []); setTotalCount(count ?? null); setLoading(false)
   }
 
   async function handleReversal(reason) {
@@ -63,7 +67,10 @@ export default function Issuances() {
     <div className="p-4 md:p-6 space-y-5">
       <div>
         <h1 className="text-white text-2xl font-bold">Issuances</h1>
-        <p className="text-[#6b7280] text-sm mt-0.5">{issuances.length} total records</p>
+        <p className="text-[#6b7280] text-sm mt-0.5">
+          {totalCount ?? issuances.length} total records
+          {totalCount !== null && totalCount > issuances.length && ` · showing most recent ${issuances.length}`}
+        </p>
       </div>
       <div className="relative">
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />

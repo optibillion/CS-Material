@@ -17,18 +17,36 @@ export default function Reports() {
 
   useEffect(() => { fetchAll() }, [])
 
+  // Supabase/PostgREST caps a plain .select() at 1000 rows per request.
+  // Issuances/allotments already exceed that, so a single fetch silently
+  // drops older records — paginate through .range() until a page comes
+  // back short, mirroring the fix applied to Sales stats elsewhere.
+  async function fetchAllRows(queryBuilderFactory) {
+    const pageSize = 1000
+    let rows = []
+    let from = 0
+    while (true) {
+      const { data, error } = await queryBuilderFactory().range(from, from + pageSize - 1)
+      if (error) { console.error(error); break }
+      rows = rows.concat(data || [])
+      if (!data || data.length < pageSize) break
+      from += pageSize
+    }
+    return rows
+  }
+
   async function fetchAll() {
     setLoading(true)
-    const [{ data: i }, { data: s }, { data: a }, { count: sc }] = await Promise.all([
-      supabase.from('issuances')
+    const [i, s, a, { count: sc }] = await Promise.all([
+      fetchAllRows(() => supabase.from('issuances')
         .select('*, students(name, student_id), books(title), users!issuances_issued_by_fkey(name)')
-        .order('issued_at', { ascending: false }),
-      supabase.from('sales')
+        .order('issued_at', { ascending: false })),
+      fetchAllRows(() => supabase.from('sales')
         .select('*, books(title), users!sales_sold_by_fkey(name)')
-        .order('sold_at', { ascending: false }),
-      supabase.from('allotments')
+        .order('sold_at', { ascending: false })),
+      fetchAllRows(() => supabase.from('allotments')
         .select('*, books(title), users!allotments_allotted_by_fkey(name)')
-        .order('allotted_at', { ascending: false }),
+        .order('allotted_at', { ascending: false })),
       supabase.from('students').select('*', { count: 'exact', head: true })
     ])
     setIssuances(i || [])

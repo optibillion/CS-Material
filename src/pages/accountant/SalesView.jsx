@@ -15,14 +15,39 @@ export default function SalesView() {
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
   const [showAll, setShowAll] = useState(false)
+  const [salesStats, setSalesStats] = useState(null)
+  const [allTimeCount, setAllTimeCount] = useState(null)
 
-  useEffect(() => { fetchSales() }, [])
+  useEffect(() => { fetchAllTimeCount() }, [])
+  useEffect(() => { fetchSales() }, [showAll, dateFrom, dateTo])
+  useEffect(() => { fetchSalesStats() }, [showAll, dateFrom, dateTo])
+
+  async function fetchAllTimeCount() {
+    const { data } = await supabase.rpc('get_sales_stats', { date_from: null, date_to: null })
+    const row = Array.isArray(data) ? data[0] : data
+    if (row) setAllTimeCount(row.total_transactions)
+  }
+
+  async function fetchSalesStats() {
+    const params = showAll ? { date_from: null, date_to: null } : { date_from: dateFrom || null, date_to: dateTo || null }
+    const { data } = await supabase.rpc('get_sales_stats', params)
+    const row = Array.isArray(data) ? data[0] : data
+    if (row) setSalesStats(row)
+  }
 
   async function fetchSales() {
     setLoading(true)
-    const { data } = await supabase.from('sales')
+    let query = supabase.from('sales')
       .select('*, books(title, exam_level, unit, part), users!sales_sold_by_fkey(name)')
       .order('sold_at', { ascending: false })
+    if (showAll) {
+      query = query.limit(10000)
+    } else {
+      if (dateFrom) query = query.gte('sold_at', `${dateFrom}T00:00:00`)
+      if (dateTo) query = query.lte('sold_at', `${dateTo}T23:59:59.999`)
+      query = query.limit(10000)
+    }
+    const { data } = await query
     setSales(data || [])
     setLoading(false)
   }
@@ -69,17 +94,29 @@ export default function SalesView() {
     )
   })
 
-  const activeTxns = filteredTxns.filter(t => !t.all_returned)
-  const dayTotalQty = activeTxns.reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
-  const dayTotalRevenue = activeTxns.reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const cashRevenue = activeTxns.filter(t => t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
-  const onlineRevenue = activeTxns.filter(t => t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+  // Note: stats below come from the get_sales_stats RPC, not client-side
+  // sums over `sales` — that array is capped at Supabase's 1000-row default
+  // and silently undercounts once sales pass 1000 rows (same bug fixed on
+  // the issuer side; see add_sales_stats_rpc.sql).
+  const txnCount = search ? filteredTxns.length : (salesStats?.total_transactions ?? filteredTxns.length)
+  const dayTotalQty = search
+    ? filteredTxns.filter(t => !t.all_returned).reduce((s, t) => s + t.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+    : (parseInt(salesStats?.total_qty) || 0)
+  const dayTotalRevenue = search
+    ? filteredTxns.filter(t => !t.all_returned).reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+    : (parseFloat(salesStats?.total_revenue) || 0)
+  const cashRevenue = search
+    ? filteredTxns.filter(t => !t.all_returned && t.payment_mode !== 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+    : (parseFloat(salesStats?.cash_revenue) || 0)
+  const onlineRevenue = search
+    ? filteredTxns.filter(t => !t.all_returned && t.payment_mode === 'online').reduce((s, t) => s + (parseFloat(t.total_price) || 0), 0)
+    : (parseFloat(salesStats?.online_revenue) || 0)
 
   return (
     <div className="p-4 md:p-6 space-y-5">
       <div>
         <h1 className="text-white text-2xl font-bold">Sales History</h1>
-        <p className="text-[#6b7280] text-sm mt-0.5">{transactions.length} total transactions</p>
+        <p className="text-[#6b7280] text-sm mt-0.5">{allTimeCount ?? transactions.length} total transactions</p>
       </div>
 
       {/* Date filter */}
@@ -106,7 +143,7 @@ export default function SalesView() {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
             <p className="text-[#6b7280] text-xs">Transactions</p>
-            <p className="text-white text-2xl font-bold mt-0.5">{filteredTxns.length}</p>
+            <p className="text-white text-2xl font-bold mt-0.5">{txnCount}</p>
           </div>
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
             <p className="text-[#6b7280] text-xs">Books Sold</p>
