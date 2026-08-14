@@ -7,7 +7,7 @@ import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDow
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
-import { generateAllotmentSlipBlob, downloadAllotmentSlip, saveSlipFile, generateGrandTotalBillBlob, downloadGrandTotalBill, saveGrandBillFile } from '../../lib/receipt'
+import { generateAllotmentSlipBlob, downloadAllotmentSlip, saveSlipFile, generateGrandTotalBillBlob, downloadGrandTotalBill, saveGrandBillFile, generateReversalSlipBlob, downloadReversalSlip, saveReversalSlipFile } from '../../lib/receipt'
 
 function WhatsAppIcon() {
   return (
@@ -78,6 +78,92 @@ function AllotmentSlipModal({ slipData, onClose }) {
         <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => pdfBlob && saveSlipFile(pdfBlob, slipData.distributor_name)}
+            disabled={!pdfBlob}
+            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all disabled:opacity-50">
+            <Download size={20} />
+            <span className="text-sm font-medium">{pdfBlob ? 'Download' : 'Preparing…'}</span>
+          </button>
+          <button
+            onClick={handleShare}
+            disabled={sharing}
+            className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#25D366] hover:bg-[#1fb857] disabled:opacity-70 text-white transition-all">
+            {sharing ? <Loader2 size={20} className="animate-spin" /> : <WhatsAppIcon />}
+            <span className="text-sm font-semibold">
+              {sharing ? 'Preparing...' : 'WhatsApp'}
+            </span>
+          </button>
+        </div>
+
+        {!pdfBlob && !sharing && (
+          <p className="text-[#4b5563] text-[10px] text-center mt-2">Preparing PDF in background…</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ReversalSlipModal({ slipData, onClose }) {
+  const [pdfBlob, setPdfBlob] = useState(null)
+  const [sharing, setSharing] = useState(false)
+  const sharingRef = useRef(false)
+
+  useEffect(() => {
+    if (!slipData) return
+    setPdfBlob(null)
+    generateReversalSlipBlob(slipData)
+      .then(blob => setPdfBlob(blob))
+      .catch(() => {})
+  }, [slipData])
+
+  if (!slipData) return null
+
+  const totalQty = slipData.books.reduce((s, b) => s + Math.abs(b.qty || 1), 0)
+  const discPct = slipData.discount_pct || 0
+  const hasPricing = slipData.books.some(b => (b.unit_mrp || 0) > 0)
+  const totalValue = hasPricing ? slipData.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - discPct / 100)).toFixed(2) * Math.abs(b.qty || 1), 0) : 0
+
+  async function handleShare() {
+    if (sharingRef.current) return
+    sharingRef.current = true
+    setSharing(true)
+    try {
+      const blob = pdfBlob || await generateReversalSlipBlob(slipData)
+      await downloadReversalSlip(blob, slipData.distributor_name)
+    } catch {
+      toast.error('Could not generate receipt')
+    } finally {
+      sharingRef.current = false
+      setSharing(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-[#1a1a2e] border border-red-500/30 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6">
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <span className="text-[10px] font-bold text-red-400 tracking-wide bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-full">REVERSAL RECEIPT</span>
+            <p className="text-white font-semibold text-sm mt-1.5">{slipData.distributor_name}</p>
+            <p className="text-[#6b7280] text-xs mt-0.5">
+              {slipData.books.length} title{slipData.books.length !== 1 ? 's' : ''} · {totalQty} copies returned
+            </p>
+            {hasPricing && (
+              <p className="text-red-400 text-xs mt-0.5 font-semibold">
+                −₹{Math.round(totalValue)} refunded{discPct > 0 ? ` · ${discPct}% discount honored` : ''}
+              </p>
+            )}
+            <p className="text-[#6b7280] text-xs mt-0.5">
+              {format(new Date(slipData.returned_at), 'dd MMM yyyy, hh:mm a')}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-[#6b7280] hover:text-white p-1.5 rounded-lg hover:bg-[#2a2a45] transition-all flex-shrink-0 ml-3">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={() => pdfBlob && saveReversalSlipFile(pdfBlob, slipData.distributor_name)}
             disabled={!pdfBlob}
             className="flex flex-col items-center justify-center gap-1.5 py-4 rounded-xl bg-[#2a2a45] hover:bg-[#3a3a55] text-white transition-all disabled:opacity-50">
             <Download size={20} />
@@ -249,6 +335,7 @@ export default function InstitutionDetail() {
   const [editOpen, setEditOpen] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
   const [slipModal, setSlipModal] = useState(null)
+  const [returnSlipModal, setReturnSlipModal] = useState(null)
   const [reverseModal, setReverseModal] = useState(null)
   const [reversing, setReversing] = useState(false)
   const [editDateModal, setEditDateModal] = useState(null)
@@ -301,11 +388,12 @@ export default function InstitutionDetail() {
     if (!(e.book_id in stockMap)) stockMap[e.book_id] = e.available_qty || 0
   }
 
-  // per-book totals
-  const bookTotals = {}
+  // per-book totals — includes reversal rows (negative qty) so a return
+  // nets down the "currently with distributor" figure automatically
+  const bookTotalsRaw = {}
   for (const a of allotments) {
     if (!a.book_id) continue
-    if (!bookTotals[a.book_id]) bookTotals[a.book_id] = {
+    if (!bookTotalsRaw[a.book_id]) bookTotalsRaw[a.book_id] = {
       title: a.books?.title,
       exam_level: a.books?.exam_level,
       unit: a.books?.unit,
@@ -313,8 +401,10 @@ export default function InstitutionDetail() {
       medium: a.books?.medium,
       qty: 0,
     }
-    bookTotals[a.book_id].qty += a.qty || 0
+    bookTotalsRaw[a.book_id].qty += a.qty || 0
   }
+  // only titles still net-positive with the distributor show in the summary
+  const bookTotals = Object.fromEntries(Object.entries(bookTotalsRaw).filter(([, v]) => v.qty > 0))
   const totalQty = allotments.reduce((s, a) => s + (a.qty || 0), 0)
   const uniqueTitles = Object.keys(bookTotals).length
 
@@ -332,6 +422,8 @@ export default function InstitutionDetail() {
           discount_pct: a.discount_pct || 0,
           totalValue: 0,
           stock_deducted: a.stock_deducted ?? false,
+          is_reversal: a.is_reversal || false,
+          reversed_batch_at: a.reversed_batch_at || null,
         }
       }
       const unit_mrp = a.unit_mrp ?? a.books?.mrp ?? null
@@ -350,6 +442,20 @@ export default function InstitutionDetail() {
       groups[batchKey].totalQty += a.qty || 0
       groups[batchKey].totalValue += +(mrp * (1 - disc / 100)).toFixed(2) * (a.qty || 1)
     }
+    // for issuance batches, work out how much of each book is still
+    // returnable — total issued in this exact batch minus whatever's
+    // already been returned against it
+    for (const batch of Object.values(groups)) {
+      if (batch.is_reversal) continue
+      for (const b of batch.books) {
+        const returned = allotments
+          .filter(a => a.is_reversal && a.reversed_batch_at === batch.allotted_at && a.book_id === b.book_id)
+          .reduce((s, a) => s + Math.abs(a.qty || 0), 0)
+        b.returnedQty = returned
+        b.remainingQty = Math.max(0, b.qty - returned)
+      }
+      batch.fullyReturned = batch.books.length > 0 && batch.books.every(b => b.remainingQty <= 0)
+    }
     return Object.values(groups).sort((a, b) => new Date(b.allotted_at) - new Date(a.allotted_at))
   }, [allotments])
 
@@ -362,6 +468,19 @@ export default function InstitutionDetail() {
       allotted_at: batch.allotted_at,
       allotted_by_name: batch.allotted_by_name,
       discount_pct: batch.discount_pct || 0,
+    })
+  }
+
+  function openReversalSlipModal(batch) {
+    setReturnSlipModal({
+      distributor_name: institution.name,
+      distributor_location: institution.location,
+      distributor_phone: institution.phone,
+      books: batch.books.map(b => ({ ...b, qty: Math.abs(b.qty) })),
+      discount_pct: batch.discount_pct || 0,
+      returned_at: batch.allotted_at,
+      returned_by_name: batch.allotted_by_name,
+      original_batch_at: batch.reversed_batch_at,
     })
   }
 
@@ -378,50 +497,67 @@ export default function InstitutionDetail() {
     fetchAll()
   }
 
-  async function handleReverseBatch() {
+  async function handleReturnBooks() {
     if (!reverseModal) return
     setReversing(true)
     const batch = reverseModal
+    const returnedAt = new Date().toISOString()
 
-    if (partialReverseMode) {
-      const booksToReverse = batch.books.filter(b => (partialReverseQtys[b.book_id] || 0) > 0)
-      if (booksToReverse.length === 0) { toast.error('Select at least one book to reverse'); setReversing(false); return }
-      for (const b of booksToReverse) {
-        const reverseQty = Math.min(partialReverseQtys[b.book_id] || 0, b.qty)
-        if (reverseQty <= 0) continue
-        if (reverseQty >= b.qty) {
-          await supabase.from('allotments').delete()
-            .eq('institution_id', id).eq('allotted_at', batch.allotted_at).eq('book_id', b.book_id)
-        } else {
-          await supabase.from('allotments').update({ qty: b.qty - reverseQty })
-            .eq('institution_id', id).eq('allotted_at', batch.allotted_at).eq('book_id', b.book_id)
-        }
-        const entry = stockEntries.find(e => e.book_id === b.book_id)
-        if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + reverseQty }).eq('id', entry.id)
-      }
-      const bookList = booksToReverse.map(b => {
-        const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-        return `${lvl || b.title} ×${partialReverseQtys[b.book_id]}`
-      }).join(', ')
-      logAction('ALLOTMENT_PARTIAL_REVERSED', `${institution.name} — partial reversal (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList} [stock restored]`)
-      toast.success('Partial reversal done')
-    } else {
-      const { error: delError } = await supabase
-        .from('allotments').delete()
-        .eq('institution_id', id).eq('allotted_at', batch.allotted_at)
-      if (delError) { toast.error('Failed to reverse: ' + delError.message); setReversing(false); return }
-      for (const b of batch.books) {
-        if (!b.book_id) continue
-        const entry = stockEntries.find(e => e.book_id === b.book_id)
-        if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + b.qty }).eq('id', entry.id)
-      }
-      const bookList = batch.books.map(b => {
-        const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-        return `${lvl || b.title} ×${b.qty}`
-      }).join(', ')
-      logAction('ALLOTMENT_REVERSED', `${institution.name} — ${batch.books.length} book(s) reversed (${format(new Date(batch.allotted_at), 'dd MMM yy')}): ${bookList} [stock restored]`)
-      toast.success('Allotment reversed')
+    const toReturn = (partialReverseMode
+      ? batch.books.filter(b => (partialReverseQtys[b.book_id] || 0) > 0)
+        .map(b => ({ ...b, returnQty: Math.min(partialReverseQtys[b.book_id] || 0, b.remainingQty) }))
+      : batch.books.filter(b => b.remainingQty > 0)
+        .map(b => ({ ...b, returnQty: b.remainingQty }))
+    ).filter(b => b.returnQty > 0)
+
+    if (toReturn.length === 0) { toast.error('Select at least one book to return'); setReversing(false); return }
+
+    const rows = toReturn.map(b => ({
+      institution_id: id,
+      book_id: b.book_id,
+      qty: -b.returnQty,
+      allotted_by: profile?.id,
+      allotted_at: returnedAt,
+      type: 'external',
+      institution_name: institution.name,
+      discount_pct: batch.discount_pct || 0,
+      unit_mrp: b.unit_mrp ?? null,
+      is_reversal: true,
+      reversed_batch_at: batch.allotted_at,
+    }))
+    const { error } = await supabase.from('allotments').insert(rows)
+    if (error) { toast.error('Failed to record return — has add_allotment_returns.sql been run in Supabase?'); setReversing(false); return }
+
+    for (const b of toReturn) {
+      const entry = stockEntries.find(e => e.book_id === b.book_id)
+      if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + b.returnQty }).eq('id', entry.id)
     }
+
+    const bookList = toReturn.map(b => {
+      const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+      return `${lvl || b.title} ×${b.returnQty}`
+    }).join(', ')
+    logAction('ALLOTMENT_RETURNED', `${institution.name} — return against batch ${format(new Date(batch.allotted_at), 'dd MMM yy')}: ${bookList} [stock restored, ${batch.discount_pct || 0}% discount honored]`)
+    toast.success('Return recorded')
+
+    setReturnSlipModal({
+      distributor_name: institution.name,
+      distributor_location: institution.location,
+      distributor_phone: institution.phone,
+      books: toReturn.map(b => ({
+        title: b.title,
+        exam_level: b.exam_level,
+        unit: b.unit,
+        part: b.part,
+        medium: b.medium,
+        qty: b.returnQty,
+        unit_mrp: b.unit_mrp,
+      })),
+      discount_pct: batch.discount_pct || 0,
+      returned_at: returnedAt,
+      returned_by_name: profile?.name,
+      original_batch_at: batch.allotted_at,
+    })
 
     setReverseModal(null)
     setReversing(false)
@@ -456,6 +592,14 @@ export default function InstitutionDetail() {
       .eq('institution_id', id)
       .eq('allotted_at', editDateModal.allotted_at)
     if (error) { toast.error('Failed to update date'); setEditingDate(false); return }
+    // any returns already recorded against this batch point back to its old
+    // timestamp via reversed_batch_at — re-point them too, or the "already
+    // returned" tracking desyncs and the same copies could be returned twice
+    await supabase
+      .from('allotments')
+      .update({ reversed_batch_at: newAt })
+      .eq('institution_id', id)
+      .eq('reversed_batch_at', editDateModal.allotted_at)
     logAction('ALLOTMENT_DATE_EDITED', `${institution.name} — batch date changed from ${oldDate} to ${format(new Date(newAt), 'dd MMM yy')} (${editDateModal.books.length} book(s), ${editDateModal.totalQty} copies)`)
     toast.success('Date updated')
     setEditDateModal(null)
@@ -730,7 +874,7 @@ export default function InstitutionDetail() {
                         {lvl && <p className="text-[#6b7280] text-[11px] truncate mt-0.5">{title}</p>}
                       </div>
                     </div>
-                    <span className="text-white text-xs font-semibold flex-shrink-0 mt-0.5">{qty} copies</span>
+                    <span className="text-white text-xs font-semibold flex-shrink-0 mt-0.5">{qty} copies with distributor</span>
                   </div>
                 )
               })}
@@ -748,53 +892,82 @@ export default function InstitutionDetail() {
         ) : (
           <div className="divide-y divide-[#2a2a45]">
             {batches.map(batch => (
-              <div key={batch.key} className="px-5 py-4">
+              <div key={batch.key} className={`px-5 py-4 ${batch.is_reversal ? 'border-l-2 border-l-red-500/50 bg-red-500/[0.03]' : ''}`}>
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-white text-sm font-semibold">{batch.books.length} title{batch.books.length !== 1 ? 's' : ''} · {batch.totalQty} copies</p>
-                      {batch.discount_pct > 0 && (
-                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-medium">{batch.discount_pct}% off</span>
+                      {batch.is_reversal ? (
+                        <>
+                          <RotateCcw size={12} className="text-red-400 flex-shrink-0" />
+                          <p className="text-white text-sm font-semibold">{batch.books.length} title{batch.books.length !== 1 ? 's' : ''} · {Math.abs(batch.totalQty)} copies returned</p>
+                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 font-bold">REVERSAL</span>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-white text-sm font-semibold">{batch.books.length} title{batch.books.length !== 1 ? 's' : ''} · {batch.totalQty} copies</p>
+                          {batch.discount_pct > 0 && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 font-medium">{batch.discount_pct}% off</span>
+                          )}
+                          {batch.fullyReturned && (
+                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-400 font-medium">Fully Returned</span>
+                          )}
+                        </>
                       )}
                     </div>
                     <p className="text-[#6b7280] text-xs mt-0.5">
                       {format(new Date(batch.allotted_at), 'dd MMM yy, hh:mm a')}
                       {batch.allotted_by_name ? ` · by ${batch.allotted_by_name}` : ''}
+                      {batch.is_reversal && batch.reversed_batch_at ? ` · against batch on ${format(new Date(batch.reversed_batch_at), 'dd MMM yy')}` : ''}
                     </p>
-                    {batch.totalValue > 0 && (
-                      <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
+                    {batch.totalValue !== 0 && (
+                      batch.is_reversal ? (
+                        <p className="text-red-400 text-xs mt-0.5 font-semibold">−₹{Math.round(Math.abs(batch.totalValue))} refunded{batch.discount_pct > 0 ? ` · ${batch.discount_pct}% discount honored` : ''}</p>
+                      ) : (
+                        <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
+                      )
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                    <button
-                      onClick={() => openSlipModal(batch)}
-                      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-                      <FileDown size={12} />
-                      Slip
-                    </button>
-                    {isAdmin && (
+                    {batch.is_reversal ? (
                       <button
-                        onClick={() => setEditDiscountModal({ batch, value: String(batch.discount_pct || 0) })}
-                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all ${batch.discount_pct > 0 ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' : 'bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white'}`}>
-                        <Percent size={12} />
-                        {batch.discount_pct > 0 ? `${batch.discount_pct}%` : 'Discount'}
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button
-                        onClick={() => { setEditDateValue(batch.allotted_at.slice(0, 10)); setEditDateModal(batch) }}
-                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-                        <CalendarDays size={12} />
-                        Edit Date
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button
-                        onClick={() => { setPartialReverseMode(false); setPartialReverseQtys({}); setReverseModal(batch) }}
+                        onClick={() => openReversalSlipModal(batch)}
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
-                        <RotateCcw size={12} />
-                        Reverse
+                        <FileDown size={12} />
+                        Receipt
                       </button>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => openSlipModal(batch)}
+                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                          <FileDown size={12} />
+                          Slip
+                        </button>
+                        {isAdmin && (
+                          <button
+                            onClick={() => setEditDiscountModal({ batch, value: String(batch.discount_pct || 0) })}
+                            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all ${batch.discount_pct > 0 ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' : 'bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white'}`}>
+                            <Percent size={12} />
+                            {batch.discount_pct > 0 ? `${batch.discount_pct}%` : 'Discount'}
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            onClick={() => { setEditDateValue(batch.allotted_at.slice(0, 10)); setEditDateModal(batch) }}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                            <CalendarDays size={12} />
+                            Edit Date
+                          </button>
+                        )}
+                        {allotmentAccess === 'edit' && !batch.fullyReturned && (
+                          <button
+                            onClick={() => { setPartialReverseMode(false); setPartialReverseQtys({}); setReverseModal(batch) }}
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
+                            <RotateCcw size={12} />
+                            Return Books
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -804,14 +977,17 @@ export default function InstitutionDetail() {
                     const isEditingThis = editQty?.batchAt === batch.allotted_at && editQty?.bookId === b.book_id
                     return (
                       <div key={i} className="flex items-center gap-2">
-                        <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
+                        <BookOpen size={11} className={`flex-shrink-0 ${batch.is_reversal ? 'text-red-400' : 'text-[#bd0a0a]'}`} />
                         {b.medium && (
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 ${b.medium === 'english' ? 'bg-[#f0a500]/20 text-[#f0a500]' : b.medium === 'both' ? 'bg-teal-500/20 text-teal-400' : 'bg-[#bd0a0a]/20 text-[#bd0a0a]'}`}>
                             {b.medium === 'english' ? 'EN' : b.medium === 'both' ? 'H+E' : 'HI'}
                           </span>
                         )}
                         <span className="text-[#9ca3af] text-xs flex-1 truncate">{lvl ? `${lvl} — ${b.title}` : b.title}</span>
-                        {isAdmin && !isEditingThis && (
+                        {!batch.is_reversal && b.returnedQty > 0 && (
+                          <span className="text-red-400 text-[10px] flex-shrink-0">−{b.returnedQty} returned</span>
+                        )}
+                        {isAdmin && !batch.is_reversal && !isEditingThis && b.returnedQty === 0 && (
                           <button
                             onClick={() => { setChangeBookTarget(''); setChangeBookSearch(''); setChangeBookModal({ batchAt: batch.allotted_at, bookId: b.book_id, qty: b.qty, currentBook: b }) }}
                             className="text-[#4b5563] hover:text-blue-400 transition-colors flex-shrink-0" title="Change book">
@@ -833,8 +1009,8 @@ export default function InstitutionDetail() {
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                            <span className="text-white text-xs font-semibold">×{b.qty}</span>
-                            {isAdmin && (
+                            <span className={`text-xs font-semibold ${batch.is_reversal ? 'text-red-400' : 'text-white'}`}>{batch.is_reversal ? '−' : ''}×{Math.abs(b.qty)}</span>
+                            {isAdmin && !batch.is_reversal && (
                               <button
                                 onClick={() => setEditQty({ batchAt: batch.allotted_at, bookId: b.book_id, value: String(b.qty) })}
                                 className="text-[#4b5563] hover:text-[#9ca3af] transition-colors">
@@ -858,6 +1034,9 @@ export default function InstitutionDetail() {
 
       {/* Allotment slip modal */}
       <AllotmentSlipModal slipData={slipModal} onClose={() => setSlipModal(null)} />
+
+      {/* Reversal receipt modal */}
+      <ReversalSlipModal slipData={returnSlipModal} onClose={() => setReturnSlipModal(null)} />
 
       {/* Grand total bill modal */}
       <GrandTotalBillModal data={grandBillData} onClose={() => setGrandBillData(null)} />
@@ -956,15 +1135,14 @@ export default function InstitutionDetail() {
         )
       })()}
 
-      {/* Reverse allotment modal — admin only */}
+      {/* Return books modal */}
       {reverseModal && (
         <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center px-4">
           <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-white font-semibold text-base mb-1">Reverse Allotment</h2>
+            <h2 className="text-white font-semibold text-base mb-1">Return Books</h2>
             <p className="text-[#6b7280] text-xs mb-3">
-              {format(new Date(reverseModal.allotted_at), 'dd MMM yy, hh:mm a')}
+              Against batch: {format(new Date(reverseModal.allotted_at), 'dd MMM yy, hh:mm a')}
               {reverseModal.allotted_by_name ? ` · by ${reverseModal.allotted_by_name}` : ''}
-              {' · '}{reverseModal.books.length} title{reverseModal.books.length !== 1 ? 's' : ''} · {reverseModal.totalQty} copies
             </p>
 
             {/* Full / Partial toggle */}
@@ -972,35 +1150,38 @@ export default function InstitutionDetail() {
               <button
                 onClick={() => setPartialReverseMode(false)}
                 className={`flex-1 py-2 text-xs font-semibold transition-all ${!partialReverseMode ? 'bg-red-600 text-white' : 'text-[#6b7280] hover:text-white'}`}>
-                Full Reverse
+                Take Back All
               </button>
               <button
                 onClick={() => {
                   setPartialReverseMode(true)
                   const init = {}
-                  reverseModal.books.forEach(b => { init[b.book_id] = b.qty })
+                  reverseModal.books.forEach(b => { init[b.book_id] = b.remainingQty })
                   setPartialReverseQtys(init)
                 }}
                 className={`flex-1 py-2 text-xs font-semibold transition-all ${partialReverseMode ? 'bg-orange-600 text-white' : 'text-[#6b7280] hover:text-white'}`}>
-                Partial Reverse
+                Select Quantities
               </button>
             </div>
 
             <div className="space-y-1.5 mb-4 bg-[#12121f] rounded-lg p-3">
-              {reverseModal.books.map((b, i) => {
+              {reverseModal.books.filter(b => b.remainingQty > 0).map((b, i) => {
                 const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
                 return (
                   <div key={i} className="flex items-center gap-2">
                     <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
-                    <span className="text-[#9ca3af] text-xs flex-1 truncate">{lvl || b.title}</span>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[#9ca3af] text-xs truncate block">{lvl || b.title}</span>
+                      {b.returnedQty > 0 && <span className="text-red-400 text-[10px]">{b.returnedQty} already returned</span>}
+                    </div>
                     {partialReverseMode ? (
                       <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className="text-[#4b5563] text-xs">of {b.qty} →</span>
+                        <span className="text-[#4b5563] text-xs">of {b.remainingQty} left →</span>
                         <input
-                          type="number" min="0" max={b.qty}
-                          value={partialReverseQtys[b.book_id] ?? b.qty}
+                          type="number" min="0" max={b.remainingQty}
+                          value={partialReverseQtys[b.book_id] ?? b.remainingQty}
                           onChange={e => {
-                            const v = Math.min(b.qty, Math.max(0, parseInt(e.target.value) || 0))
+                            const v = Math.min(b.remainingQty, Math.max(0, parseInt(e.target.value) || 0))
                             setPartialReverseQtys(q => ({ ...q, [b.book_id]: v }))
                           }}
                           className="w-14 bg-[#1a1a2e] border border-[#3a3a55] rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none focus:border-orange-500"
@@ -1008,26 +1189,24 @@ export default function InstitutionDetail() {
                         <span className="text-[#6b7280] text-xs">back</span>
                       </div>
                     ) : (
-                      <span className="text-white text-xs font-semibold flex-shrink-0">×{b.qty}</span>
+                      <span className="text-white text-xs font-semibold flex-shrink-0">×{b.remainingQty}</span>
                     )}
                   </div>
                 )
               })}
             </div>
 
-            {partialReverseMode && (
-              <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 mb-4 text-xs text-orange-300">
-                Set each book's "take back" qty. 0 = keep as-is. Remaining copies stay in the allotment.
-              </div>
-            )}
+            <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 mb-4 text-xs text-orange-300">
+              Refund is credited at the same {reverseModal.discount_pct || 0}% discount this batch was given at — the real amount charged, not full MRP. Stock, distributor totals and the grand bill all update automatically. A reversal receipt is generated once confirmed.
+            </div>
             <div className="flex gap-3">
               <button onClick={() => setReverseModal(null)} disabled={reversing}
                 className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">
                 Cancel
               </button>
-              <button onClick={handleReverseBatch} disabled={reversing}
+              <button onClick={handleReturnBooks} disabled={reversing}
                 className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-50 text-white ${partialReverseMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                {reversing ? 'Reversing…' : partialReverseMode ? 'Confirm Partial' : 'Yes, Reverse All'}
+                {reversing ? 'Recording…' : partialReverseMode ? 'Confirm Return' : 'Take Back All'}
               </button>
             </div>
           </div>

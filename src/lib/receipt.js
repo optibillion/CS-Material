@@ -25,12 +25,14 @@ function fmt(n) {
   return n % 1 === 0 ? String(n) : n.toFixed(2)
 }
 
-function allotmentBookRowHTML(b, i, discPct) {
+function allotmentBookRowHTML(b, i, discPct, isReversal = false) {
   const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
   const mrp = b.unit_mrp || 0
-  const qty = b.qty || 1
+  const qty = Math.abs(b.qty || 1)
   const discountedPrice = mrp > 0 ? +(mrp * (1 - discPct / 100)).toFixed(2) : 0
   const showPrice = mrp > 0
+  const sign = isReversal ? '−' : ''
+  const priceColor = isReversal ? '#dc2626' : '#bd0a0a'
 
   return `<div style="display:flex;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f0f0f0">
     <span style="font-size:11px;color:#bbb;width:22px;flex-shrink:0;padding-top:1px">${i + 1}.</span>
@@ -40,10 +42,11 @@ function allotmentBookRowHTML(b, i, discPct) {
       ${showPrice && discPct > 0 ? `<div style="font-size:10px;color:#bbb;margin-top:2px">MRP <span style="text-decoration:line-through">₹${fmt(mrp)}</span></div>` : ''}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-left:12px;flex-shrink:0;padding-top:1px">
+      ${isReversal ? `<div style="background:#dc2626;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:#fff;letter-spacing:1px;white-space:nowrap;text-align:center">RETURNED</div>` : ''}
       ${b.medium ? `<div style="background:#bd0a0a;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:#fff;letter-spacing:1px;white-space:nowrap;text-align:center">${b.medium === 'both' ? 'HINDI + ENGLISH' : b.medium.toUpperCase()}</div>` : ''}
       ${showPrice
-        ? `<div style="text-align:right"><span style="font-size:13px;font-weight:700;color:#bd0a0a">₹${fmt(discountedPrice)}</span><span style="font-size:11px;color:#555"> ×${qty}</span></div>`
-        : `<span style="font-size:12px;font-weight:700;color:#555">×${qty}</span>`
+        ? `<div style="text-align:right"><span style="font-size:13px;font-weight:700;color:${priceColor}">${sign}₹${fmt(discountedPrice)}</span><span style="font-size:11px;color:#555"> ×${qty}</span></div>`
+        : `<span style="font-size:12px;font-weight:700;color:#555">${sign}×${qty}</span>`
       }
     </div>
   </div>`
@@ -180,6 +183,64 @@ function buildAllotmentSlipHTML(data) {
   return pageShell('Distributor Slip — Champion Square', 'DISTRIBUTOR SLIP', body)
 }
 
+function buildReversalSlipHTML(data) {
+  const { distributor_name, distributor_location, distributor_phone, books, returned_at, returned_by_name, discount_pct, original_batch_at } = data
+  const date = format(new Date(returned_at), 'dd MMM yyyy, hh:mm a')
+  const totalQty = books.reduce((s, b) => s + Math.abs(b.qty || 1), 0)
+  const discPct = discount_pct || 0
+
+  const booksWithPrice = books.filter(b => (b.unit_mrp || 0) > 0)
+  const hasPrice = booksWithPrice.length > 0
+  const totalRefunded = booksWithPrice.reduce((s, b) => s + (+(b.unit_mrp * (1 - discPct / 100)).toFixed(2) * Math.abs(b.qty || 1)), 0)
+
+  const body = `
+  <div style="padding:36px 48px 0;flex:1">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:0">
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;width:120px;vertical-align:top">Date</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${date}</td></tr>
+      ${returned_by_name ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Received By</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${returned_by_name}</td></tr>` : ''}
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Distributor</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_name}</td></tr>
+      ${distributor_location ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Location</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_location}</td></tr>` : ''}
+      ${distributor_phone ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Phone</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_phone}</td></tr>` : ''}
+      ${original_batch_at ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Against Dispatch</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${format(new Date(original_batch_at), 'dd MMM yyyy')}</td></tr>` : ''}
+      ${discPct > 0 ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Discount Honored</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:700;color:#dc2626">${discPct}% (same as original)</td></tr>` : ''}
+    </table>
+    ${RULER}
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#dc2626;margin-bottom:4px">Books Returned</div>
+    <div>${books.map((b, i) => allotmentBookRowHTML(b, i, discPct, true)).join('')}</div>
+    <div style="border-top:2px solid #1a1a1a;margin-top:16px"></div>
+    ${hasPrice ? `
+      <div style="padding:10px 0 4px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">Refunded Amount</span>
+          <span style="font-size:26px;font-weight:800;color:#dc2626">−₹${fmt(totalRefunded)}</span>
+        </div>
+      </div>
+      <div style="border-top:2px solid #1a1a1a"></div>
+    ` : `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#888">Total Books Returned</span>
+        <span style="font-size:26px;font-weight:800;color:#dc2626">${totalQty}</span>
+      </div>
+      <div style="border-top:2px solid #1a1a1a"></div>
+    `}
+  </div>
+  <div style="padding:28px 48px 36px;text-align:center">
+    ${RULER}
+    <div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px">Champion Square Notes</div>
+    <div style="font-size:10px;color:#aaa;margin-bottom:6px">For queries, contact Champion Square.</div>
+    <div style="font-size:10px;font-weight:700;color:#bd0a0a;letter-spacing:1px">Excellence · Experience · Trust</div>
+  </div>`
+
+  return pageShell('Reversal Receipt — Champion Square', 'REVERSAL RECEIPT', body)
+}
+
 async function generatePDFFromHTML(html) {
   // Wrap in a hidden 0×0 clip so the iframe doesn't flash on screen,
   // but give the iframe a large explicit height so the browser fully
@@ -294,6 +355,10 @@ export async function generateAllotmentSlipBlob(data) {
   return generatePDFFromHTML(buildAllotmentSlipHTML(data))
 }
 
+export async function generateReversalSlipBlob(data) {
+  return generatePDFFromHTML(buildReversalSlipHTML(data))
+}
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -335,6 +400,25 @@ export function saveSlipFile(blob, distributorName) {
   downloadBlob(blob, filename)
 }
 
+export async function downloadReversalSlip(blob, distributorName) {
+  const filename = `Reversal-Receipt-${distributorName.replace(/\s+/g, '-')}.pdf`
+  const file = new File([blob], filename, { type: 'application/pdf' })
+  try {
+    if (navigator.share) {
+      await navigator.share({ files: [file], title: `Reversal Receipt — ${distributorName}` })
+    } else {
+      downloadBlob(blob, filename)
+    }
+  } catch (e) {
+    if (e?.name !== 'AbortError') downloadBlob(blob, filename)
+  }
+}
+
+export function saveReversalSlipFile(blob, distributorName) {
+  const filename = `Reversal-Receipt-${distributorName.replace(/\s+/g, '-')}.pdf`
+  downloadBlob(blob, filename)
+}
+
 function buildGrandTotalBillHTML(data) {
   const { distributor_name, distributor_location, distributor_phone, batches, generated_at } = data
   const date = format(new Date(generated_at || new Date()), 'dd MMM yyyy, hh:mm a')
@@ -350,20 +434,23 @@ function buildGrandTotalBillHTML(data) {
   const batchSections = sorted.map((batch, bi) => {
     const batchDate = format(new Date(batch.allotted_at), 'dd MMM yyyy')
     const discPct = batch.discount_pct || 0
+    const isReversal = !!batch.is_reversal
     const batchHasPrice = batch.books.some(b => (b.unit_mrp || 0) > 0)
     const batchOriginal = batch.books.reduce((s, b) => s + (b.unit_mrp || 0) * (b.qty || 1), 0)
     const batchFinal = batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - discPct / 100)).toFixed(2) * (b.qty || 1), 0)
 
     return `<div style="margin-bottom:20px">
-      <div style="background:#f7f7f7;border-radius:6px;padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:10px">
-        <span style="font-size:11px;font-weight:700;color:#bd0a0a;text-transform:uppercase;letter-spacing:1px">${batchDate}</span>
-        ${discPct > 0 ? `<span style="font-size:10px;background:#16a34a;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">${discPct}% off</span>` : ''}
+      <div style="background:${isReversal ? '#fef2f2' : '#f7f7f7'};border-radius:6px;padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:10px">
+        <span style="font-size:11px;font-weight:700;color:${isReversal ? '#dc2626' : '#bd0a0a'};text-transform:uppercase;letter-spacing:1px">${batchDate}</span>
+        ${isReversal
+          ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">RETURNED${batch.reversed_batch_at ? ` · vs ${format(new Date(batch.reversed_batch_at), 'dd MMM yy')}` : ''}</span>`
+          : discPct > 0 ? `<span style="font-size:10px;background:#16a34a;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">${discPct}% off</span>` : ''}
       </div>
-      ${batch.books.map((b, i) => allotmentBookRowHTML(b, i, discPct)).join('')}
+      ${batch.books.map((b, i) => allotmentBookRowHTML(b, i, discPct, isReversal)).join('')}
       ${batchHasPrice ? `<div style="display:flex;justify-content:flex-end;padding:6px 0 2px;margin-top:2px">
         <div style="text-align:right">
-          ${discPct > 0 ? `<span style="font-size:11px;color:#aaa;text-decoration:line-through;margin-right:8px">₹${fmt(batchOriginal)}</span>` : ''}
-          <span style="font-size:13px;font-weight:700;color:#555">Subtotal: <span style="color:#bd0a0a">₹${fmt(batchFinal)}</span></span>
+          ${discPct > 0 && !isReversal ? `<span style="font-size:11px;color:#aaa;text-decoration:line-through;margin-right:8px">₹${fmt(batchOriginal)}</span>` : ''}
+          <span style="font-size:13px;font-weight:700;color:#555">Subtotal: <span style="color:${isReversal ? '#dc2626' : '#bd0a0a'}">${isReversal ? '−' : ''}₹${fmt(Math.abs(batchFinal))}</span></span>
         </div>
       </div>` : ''}
     </div>${bi < sorted.length - 1 ? RULER : ''}`

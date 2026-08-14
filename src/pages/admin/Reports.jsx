@@ -323,8 +323,14 @@ export default function Reports() {
                 <tr key={a.id} className="hover:bg-[#12121f] transition-colors">
                   <td className="px-5 py-3"><p className="text-white text-sm font-medium">{a.institution_name}</p><p className="text-[#6b7280] text-xs">{a.contact_person}</p></td>
                   <td className="px-5 py-3 text-[#9ca3af] text-sm">{a.books?.title}</td>
-                  <td className="px-5 py-3 text-white text-sm font-semibold">{a.qty}</td>
-                  <td className="px-5 py-3"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${a.type==='external'?'bg-orange-500/20 text-orange-400 border-orange-500/30':'bg-blue-500/20 text-blue-400 border-blue-500/30'}`}>{a.type}</span></td>
+                  <td className={`px-5 py-3 text-sm font-semibold ${a.is_reversal ? 'text-red-400' : 'text-white'}`}>{a.qty}</td>
+                  <td className="px-5 py-3">
+                    {a.is_reversal ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-red-500/20 text-red-400 border-red-500/30">return</span>
+                    ) : (
+                      <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${a.type==='external'?'bg-orange-500/20 text-orange-400 border-orange-500/30':'bg-blue-500/20 text-blue-400 border-blue-500/30'}`}>{a.type}</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 text-[#9ca3af] text-sm">{a.approved_by||'—'}</td>
                   <td className="px-5 py-3 text-[#9ca3af] text-sm">{a.users?.name||'—'}</td>
                   <td className="px-5 py-3 text-[#9ca3af] text-sm">{format(new Date(a.allotted_at),'dd MMM yy')}</td>
