@@ -336,8 +336,11 @@ export default function InstitutionDetail() {
   const [issueOpen, setIssueOpen] = useState(false)
   const [slipModal, setSlipModal] = useState(null)
   const [returnSlipModal, setReturnSlipModal] = useState(null)
-  const [reverseModal, setReverseModal] = useState(null)
-  const [reversing, setReversing] = useState(false)
+  const [takeBackOpen, setTakeBackOpen] = useState(false)
+  const [takeBackQtyMap, setTakeBackQtyMap] = useState({}) // { bookId: qty string }
+  const [tbExamFilter, setTbExamFilter] = useState('all')
+  const [tbUnitFilter, setTbUnitFilter] = useState('all')
+  const [takeBackSubmitting, setTakeBackSubmitting] = useState(false)
   const [editDateModal, setEditDateModal] = useState(null)
   const [editDateValue, setEditDateValue] = useState('')
   const [editingDate, setEditingDate] = useState(false)
@@ -348,8 +351,6 @@ export default function InstitutionDetail() {
   const [changeBookSearch, setChangeBookSearch] = useState('')
   const [editDiscountModal, setEditDiscountModal] = useState(null) // { batch, value: string }
   const [editingDiscount, setEditingDiscount] = useState(false)
-  const [partialReverseMode, setPartialReverseMode] = useState(false)
-  const [partialReverseQtys, setPartialReverseQtys] = useState({}) // { bookId: number }
   const [grandBillData, setGrandBillData] = useState(null)
 
   const today = new Date().toISOString().slice(0, 10)
@@ -428,7 +429,7 @@ export default function InstitutionDetail() {
       }
       const unit_mrp = a.unit_mrp ?? a.books?.mrp ?? null
       const mrp = unit_mrp || 0
-      const disc = groups[batchKey].discount_pct
+      const rowDisc = a.discount_pct || 0
       groups[batchKey].books.push({
         book_id: a.book_id,
         title: a.books?.title,
@@ -438,15 +439,26 @@ export default function InstitutionDetail() {
         medium: a.books?.medium,
         qty: a.qty || 1,
         unit_mrp,
+        discount_pct: rowDisc,
+        reversed_batch_at: a.reversed_batch_at || null,
       })
       groups[batchKey].totalQty += a.qty || 0
-      groups[batchKey].totalValue += +(mrp * (1 - disc / 100)).toFixed(2) * (a.qty || 1)
+      // per-row discount, not the group's — a "take back" batch can draw
+      // books from several original batches at different discount rates
+      groups[batchKey].totalValue += +(mrp * (1 - rowDisc / 100)).toFixed(2) * (a.qty || 1)
     }
-    // for issuance batches, work out how much of each book is still
-    // returnable — total issued in this exact batch minus whatever's
-    // already been returned against it
     for (const batch of Object.values(groups)) {
+      // a batch is "uniform" if every row shares the same discount — true
+      // for every issuance batch (always one rate) and most take-backs;
+      // used to decide whether a single "X% off" badge is honest to show
+      batch.uniformDiscount = batch.books.every(b => (b.discount_pct || 0) === batch.discount_pct)
+      // a take-back can draw from several original batches in one action —
+      // only trust the single "vs <date>" label when there's truly one source
+      batch.multiSource = batch.is_reversal && new Set(batch.books.map(b => b.reversed_batch_at)).size > 1
       if (batch.is_reversal) continue
+      // for issuance batches, work out how much of each book is still
+      // returnable — total issued in this exact batch minus whatever's
+      // already been returned against it
       for (const b of batch.books) {
         const returned = allotments
           .filter(a => a.is_reversal && a.reversed_batch_at === batch.allotted_at && a.book_id === b.book_id)
@@ -480,7 +492,6 @@ export default function InstitutionDetail() {
       discount_pct: batch.discount_pct || 0,
       returned_at: batch.allotted_at,
       returned_by_name: batch.allotted_by_name,
-      original_batch_at: batch.reversed_batch_at,
     })
   }
 
@@ -497,70 +508,95 @@ export default function InstitutionDetail() {
     fetchAll()
   }
 
-  async function handleReturnBooks() {
-    if (!reverseModal) return
-    setReversing(true)
-    const batch = reverseModal
+  function openTakeBack() { setTakeBackQtyMap({}); setTbExamFilter('all'); setTbUnitFilter('all'); setTakeBackOpen(true) }
+
+  // draw each requested book's return quantity from its original batches
+  // oldest first (FIFO) — each portion is credited at the discount THAT
+  // batch was given at, never a blended or full-MRP rate. Pure function of
+  // qtyMap + current batches/bookTotals — safe to call for a live preview
+  // and again on submit; both see the same numbers.
+  function allocateTakeBack(qtyMap) {
+    const requested = Object.entries(bookTotals).filter(([bookId]) => parseInt(qtyMap[bookId] || 0) > 0)
+    const sourceBatches = batches.filter(b => !b.is_reversal).slice().sort((a, b) => new Date(a.allotted_at) - new Date(b.allotted_at))
+    const allocations = []
+    for (const [bookId, info] of requested) {
+      let remaining = Math.min(parseInt(qtyMap[bookId]), info.qty)
+      for (const batch of sourceBatches) {
+        if (remaining <= 0) break
+        const bookRow = batch.books.find(bk => bk.book_id === bookId)
+        if (!bookRow || bookRow.remainingQty <= 0) continue
+        const draw = Math.min(remaining, bookRow.remainingQty)
+        allocations.push({ book_id: bookId, qty: draw, discount_pct: batch.discount_pct || 0, unit_mrp: bookRow.unit_mrp ?? null, reversed_batch_at: batch.allotted_at })
+        remaining -= draw
+      }
+    }
+    return allocations
+  }
+
+  async function handleTakeBack() {
+    const allocations = allocateTakeBack(takeBackQtyMap)
+    if (allocations.length === 0) { toast.error('Select at least one book to take back'); return }
+    setTakeBackSubmitting(true)
     const returnedAt = new Date().toISOString()
 
-    const toReturn = (partialReverseMode
-      ? batch.books.filter(b => (partialReverseQtys[b.book_id] || 0) > 0)
-        .map(b => ({ ...b, returnQty: Math.min(partialReverseQtys[b.book_id] || 0, b.remainingQty) }))
-      : batch.books.filter(b => b.remainingQty > 0)
-        .map(b => ({ ...b, returnQty: b.remainingQty }))
-    ).filter(b => b.returnQty > 0)
+    const stockDeltaByBook = {}
+    const rows = allocations.map(a => {
+      stockDeltaByBook[a.book_id] = (stockDeltaByBook[a.book_id] || 0) + a.qty
+      return {
+        institution_id: id,
+        book_id: a.book_id,
+        qty: -a.qty,
+        allotted_by: profile?.id,
+        allotted_at: returnedAt,
+        type: 'external',
+        institution_name: institution.name,
+        discount_pct: a.discount_pct,
+        unit_mrp: a.unit_mrp,
+        is_reversal: true,
+        reversed_batch_at: a.reversed_batch_at,
+      }
+    })
 
-    if (toReturn.length === 0) { toast.error('Select at least one book to return'); setReversing(false); return }
-
-    const rows = toReturn.map(b => ({
-      institution_id: id,
-      book_id: b.book_id,
-      qty: -b.returnQty,
-      allotted_by: profile?.id,
-      allotted_at: returnedAt,
-      type: 'external',
-      institution_name: institution.name,
-      discount_pct: batch.discount_pct || 0,
-      unit_mrp: b.unit_mrp ?? null,
-      is_reversal: true,
-      reversed_batch_at: batch.allotted_at,
-    }))
     const { error } = await supabase.from('allotments').insert(rows)
-    if (error) { toast.error('Failed to record return — has add_allotment_returns.sql been run in Supabase?'); setReversing(false); return }
+    if (error) { toast.error('Failed to record return — has add_allotment_returns.sql been run in Supabase?'); setTakeBackSubmitting(false); return }
 
-    for (const b of toReturn) {
-      const entry = stockEntries.find(e => e.book_id === b.book_id)
-      if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + b.returnQty }).eq('id', entry.id)
+    for (const [bookId, delta] of Object.entries(stockDeltaByBook)) {
+      const entry = stockEntries.find(e => e.book_id === bookId)
+      if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + delta }).eq('id', entry.id)
     }
 
-    const bookList = toReturn.map(b => {
-      const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-      return `${lvl || b.title} ×${b.returnQty}`
+    const bookList = Object.entries(stockDeltaByBook).map(([bookId, qty]) => {
+      const info = bookTotals[bookId]
+      const lvl = [info.exam_level, info.unit, info.part].filter(Boolean).join(' › ')
+      return `${lvl || info.title} ×${qty}`
     }).join(', ')
-    logAction('ALLOTMENT_RETURNED', `${institution.name} — return against batch ${format(new Date(batch.allotted_at), 'dd MMM yy')}: ${bookList} [stock restored, ${batch.discount_pct || 0}% discount honored]`)
+    logAction('ALLOTMENT_RETURNED', `${institution.name} — take back: ${bookList} [stock restored, discount honored per original batch]`)
     toast.success('Return recorded')
 
     setReturnSlipModal({
       distributor_name: institution.name,
       distributor_location: institution.location,
       distributor_phone: institution.phone,
-      books: toReturn.map(b => ({
-        title: b.title,
-        exam_level: b.exam_level,
-        unit: b.unit,
-        part: b.part,
-        medium: b.medium,
-        qty: b.returnQty,
-        unit_mrp: b.unit_mrp,
-      })),
-      discount_pct: batch.discount_pct || 0,
+      books: rows.map(r => {
+        const catalogBook = books.find(bk => bk.id === r.book_id)
+        return {
+          title: catalogBook?.title,
+          exam_level: catalogBook?.exam_level,
+          unit: catalogBook?.unit,
+          part: catalogBook?.part,
+          medium: catalogBook?.medium,
+          qty: -r.qty,
+          unit_mrp: r.unit_mrp,
+          discount_pct: r.discount_pct,
+        }
+      }),
       returned_at: returnedAt,
       returned_by_name: profile?.name,
-      original_batch_at: batch.allotted_at,
     })
 
-    setReverseModal(null)
-    setReversing(false)
+    setTakeBackOpen(false)
+    setTakeBackQtyMap({})
+    setTakeBackSubmitting(false)
     fetchAll()
   }
 
@@ -820,6 +856,12 @@ export default function InstitutionDetail() {
                 <Pencil size={12} /> Edit
               </button>
             )}
+            {allotmentAccess === 'edit' && totalQty > 0 && (
+              <button onClick={openTakeBack}
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 font-semibold transition-all">
+                <RotateCcw size={12} /> Take Back Books
+              </button>
+            )}
             {allotmentAccess === 'edit' && (
               <button onClick={openIssue}
                 className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold transition-all">
@@ -917,11 +959,16 @@ export default function InstitutionDetail() {
                     <p className="text-[#6b7280] text-xs mt-0.5">
                       {format(new Date(batch.allotted_at), 'dd MMM yy, hh:mm a')}
                       {batch.allotted_by_name ? ` · by ${batch.allotted_by_name}` : ''}
-                      {batch.is_reversal && batch.reversed_batch_at ? ` · against batch on ${format(new Date(batch.reversed_batch_at), 'dd MMM yy')}` : ''}
+                      {batch.is_reversal && batch.multiSource ? ' · against multiple earlier batches' : ''}
+                      {batch.is_reversal && !batch.multiSource && batch.reversed_batch_at ? ` · against batch on ${format(new Date(batch.reversed_batch_at), 'dd MMM yy')}` : ''}
                     </p>
                     {batch.totalValue !== 0 && (
                       batch.is_reversal ? (
-                        <p className="text-red-400 text-xs mt-0.5 font-semibold">−₹{Math.round(Math.abs(batch.totalValue))} refunded{batch.discount_pct > 0 ? ` · ${batch.discount_pct}% discount honored` : ''}</p>
+                        <p className="text-red-400 text-xs mt-0.5 font-semibold">
+                          −₹{Math.round(Math.abs(batch.totalValue))} refunded
+                          {batch.uniformDiscount && batch.discount_pct > 0 ? ` · ${batch.discount_pct}% discount honored` : ''}
+                          {!batch.uniformDiscount ? ' · mixed discount rates honored per book' : ''}
+                        </p>
                       ) : (
                         <p className="text-[#f0a500] text-xs mt-0.5 font-semibold">₹{Math.round(batch.totalValue)}{batch.discount_pct > 0 ? ` after ${batch.discount_pct}% discount` : ''}</p>
                       )
@@ -957,14 +1004,6 @@ export default function InstitutionDetail() {
                             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
                             <CalendarDays size={12} />
                             Edit Date
-                          </button>
-                        )}
-                        {allotmentAccess === 'edit' && !batch.fullyReturned && (
-                          <button
-                            onClick={() => { setPartialReverseMode(false); setPartialReverseQtys({}); setReverseModal(batch) }}
-                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all">
-                            <RotateCcw size={12} />
-                            Return Books
                           </button>
                         )}
                       </>
@@ -1135,83 +1174,127 @@ export default function InstitutionDetail() {
         )
       })()}
 
-      {/* Return books modal */}
-      {reverseModal && (
-        <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center px-4">
-          <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-white font-semibold text-base mb-1">Return Books</h2>
-            <p className="text-[#6b7280] text-xs mb-3">
-              Against batch: {format(new Date(reverseModal.allotted_at), 'dd MMM yy, hh:mm a')}
-              {reverseModal.allotted_by_name ? ` · by ${reverseModal.allotted_by_name}` : ''}
-            </p>
+      {/* Take back books panel */}
+      {takeBackOpen && (() => {
+        const tbExamOptions = [...new Set(Object.values(bookTotals).map(b => b.exam_level).filter(Boolean))].sort()
+        const tbUnitOptions = [...new Set(Object.values(bookTotals).filter(b => tbExamFilter === 'all' || b.exam_level === tbExamFilter).map(b => b.unit).filter(Boolean))].sort()
+        const tbVisible = Object.entries(bookTotals)
+          .filter(([, info]) => (tbExamFilter === 'all' || info.exam_level === tbExamFilter) && (tbUnitFilter === 'all' || info.unit === tbUnitFilter))
+          .sort(([, a], [, b]) => {
+            const key = x => [x.exam_level, x.unit, x.part, x.title].map(v => v || '').join('\x00')
+            return key(a).localeCompare(key(b))
+          })
+        const selectedEntries = Object.entries(bookTotals).filter(([bookId]) => parseInt(takeBackQtyMap[bookId] || 0) > 0)
+        const allocations = allocateTakeBack(takeBackQtyMap)
+        const previewQty = allocations.reduce((s, a) => s + a.qty, 0)
+        const previewRefund = allocations.reduce((s, a) => s + +((a.unit_mrp || 0) * (1 - a.discount_pct / 100)).toFixed(2) * a.qty, 0)
 
-            {/* Full / Partial toggle */}
-            <div className="flex rounded-lg border border-[#2a2a45] overflow-hidden mb-4">
-              <button
-                onClick={() => setPartialReverseMode(false)}
-                className={`flex-1 py-2 text-xs font-semibold transition-all ${!partialReverseMode ? 'bg-red-600 text-white' : 'text-[#6b7280] hover:text-white'}`}>
-                Take Back All
-              </button>
-              <button
-                onClick={() => {
-                  setPartialReverseMode(true)
-                  const init = {}
-                  reverseModal.books.forEach(b => { init[b.book_id] = b.remainingQty })
-                  setPartialReverseQtys(init)
-                }}
-                className={`flex-1 py-2 text-xs font-semibold transition-all ${partialReverseMode ? 'bg-orange-600 text-white' : 'text-[#6b7280] hover:text-white'}`}>
-                Select Quantities
-              </button>
-            </div>
+        return (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+            <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col">
+              <div className="px-5 py-4 border-b border-[#2a2a45] flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h2 className="text-white font-semibold">Take Back Books</h2>
+                  <p className="text-[#6b7280] text-xs mt-0.5">from {institution.name}</p>
+                </div>
+                <button onClick={() => setTakeBackOpen(false)} className="text-[#6b7280] hover:text-white text-sm px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] transition-all">Cancel</button>
+              </div>
 
-            <div className="space-y-1.5 mb-4 bg-[#12121f] rounded-lg p-3">
-              {reverseModal.books.filter(b => b.remainingQty > 0).map((b, i) => {
-                const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-                return (
-                  <div key={i} className="flex items-center gap-2">
-                    <BookOpen size={11} className="text-[#bd0a0a] flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <span className="text-[#9ca3af] text-xs truncate block">{lvl || b.title}</span>
-                      {b.returnedQty > 0 && <span className="text-red-400 text-[10px]">{b.returnedQty} already returned</span>}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 text-xs text-orange-300">
+                  Each copy is refunded at the discount rate it was originally given at (oldest batch first) — never full MRP. Stock, distributor totals and the grand bill all update automatically. A reversal receipt is generated once confirmed.
+                </div>
+
+                {tbExamOptions.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      {['all', ...tbExamOptions].map(e => (
+                        <button key={e} type="button" onClick={() => { setTbExamFilter(e); setTbUnitFilter('all') }}
+                          className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${tbExamFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                          {e === 'all' ? 'All Exams' : e}
+                        </button>
+                      ))}
                     </div>
-                    {partialReverseMode ? (
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className="text-[#4b5563] text-xs">of {b.remainingQty} left →</span>
-                        <input
-                          type="number" min="0" max={b.remainingQty}
-                          value={partialReverseQtys[b.book_id] ?? b.remainingQty}
-                          onChange={e => {
-                            const v = Math.min(b.remainingQty, Math.max(0, parseInt(e.target.value) || 0))
-                            setPartialReverseQtys(q => ({ ...q, [b.book_id]: v }))
-                          }}
-                          className="w-14 bg-[#1a1a2e] border border-[#3a3a55] rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none focus:border-orange-500"
-                        />
-                        <span className="text-[#6b7280] text-xs">back</span>
+                    {tbUnitOptions.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {['all', ...tbUnitOptions].map(u => (
+                          <button key={u} type="button" onClick={() => setTbUnitFilter(u)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all capitalize ${tbUnitFilter === u ? 'bg-[#f0a500] border-[#f0a500] text-black' : 'bg-[#12121f] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
+                            {u === 'all' ? 'All Units' : u}
+                          </button>
+                        ))}
                       </div>
-                    ) : (
-                      <span className="text-white text-xs font-semibold flex-shrink-0">×{b.remainingQty}</span>
                     )}
                   </div>
-                )
-              })}
-            </div>
+                )}
 
-            <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-3 py-2 mb-4 text-xs text-orange-300">
-              Refund is credited at the same {reverseModal.discount_pct || 0}% discount this batch was given at — the real amount charged, not full MRP. Stock, distributor totals and the grand bill all update automatically. A reversal receipt is generated once confirmed.
-            </div>
-            <div className="flex gap-3">
-              <button onClick={() => setReverseModal(null)} disabled={reversing}
-                className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">
-                Cancel
-              </button>
-              <button onClick={handleReturnBooks} disabled={reversing}
-                className={`flex-1 px-4 py-2.5 rounded-lg font-semibold text-sm transition-all disabled:opacity-50 text-white ${partialReverseMode ? 'bg-orange-600 hover:bg-orange-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                {reversing ? 'Recording…' : partialReverseMode ? 'Confirm Return' : 'Take Back All'}
-              </button>
+                <div className="space-y-2">
+                  {tbVisible.length === 0 ? (
+                    <p className="text-[#4b5563] text-xs text-center py-4">No books to take back</p>
+                  ) : tbVisible.map(([bookId, info]) => {
+                    const lvl = [info.exam_level, info.unit, info.part].filter(Boolean).join(' › ')
+                    const qty = parseInt(takeBackQtyMap[bookId] || 0)
+                    return (
+                      <div key={bookId} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${qty > 0 ? 'bg-red-500/10 border-red-500/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {info.medium === 'hindi' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30 font-semibold flex-shrink-0">Hindi</span>}
+                            {info.medium === 'english' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-500/20 text-blue-400 border-blue-500/30 font-semibold flex-shrink-0">English</span>}
+                            {info.medium === 'both' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 font-semibold flex-shrink-0">Both</span>}
+                            {lvl ? <p className="text-white text-sm font-semibold">{lvl}</p> : <p className="text-white text-sm">{info.title}</p>}
+                          </div>
+                          {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{info.title}</p>}
+                          <p className="text-emerald-400 text-xs mt-0.5">{info.qty} with distributor</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <input
+                            type="number" min="0" max={info.qty} placeholder="0"
+                            value={takeBackQtyMap[bookId] || ''}
+                            onChange={e => {
+                              const v = Math.min(info.qty, Math.max(0, parseInt(e.target.value.replace(/\D/g, '')) || 0))
+                              setTakeBackQtyMap(m => ({ ...m, [bookId]: v ? String(v) : '' }))
+                            }}
+                            className="w-16 bg-[#12121f] border border-[#2a2a45] rounded-lg px-2 py-1.5 text-white text-sm text-center focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t border-[#2a2a45] px-5 py-4 space-y-3 flex-shrink-0">
+                {selectedEntries.length > 0 && (
+                  <div className="bg-[#12121f] rounded-lg p-3 space-y-1.5">
+                    <p className="text-[#6b7280] text-xs font-medium uppercase tracking-wide">Taking Back ({selectedEntries.length} title{selectedEntries.length !== 1 ? 's' : ''} · {previewQty} copies)</p>
+                    {selectedEntries.map(([bookId, info]) => {
+                      const lvl = [info.exam_level, info.unit, info.part].filter(Boolean).join(' › ')
+                      return (
+                        <div key={bookId} className="flex items-center justify-between gap-2">
+                          <p className="text-[#9ca3af] text-xs truncate">{lvl || info.title}</p>
+                          <span className="text-white text-xs font-semibold flex-shrink-0">×{takeBackQtyMap[bookId]}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {previewRefund > 0 && (
+                  <div className="bg-[#12121f] rounded-lg px-3 py-2 flex items-center justify-between">
+                    <span className="text-[#6b7280] text-xs">Refund to distributor</span>
+                    <span className="text-red-400 text-sm font-bold">−₹{Math.round(previewRefund)}</span>
+                  </div>
+                )}
+
+                <button onClick={handleTakeBack} disabled={takeBackSubmitting || selectedEntries.length === 0}
+                  className="w-full py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition-all disabled:opacity-50">
+                  {takeBackSubmitting ? 'Recording…' : `Take Back ${selectedEntries.length > 0 ? selectedEntries.length + ' Book(s)' : 'Books'}`}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* Edit discount modal — admin only */}
       {editDiscountModal && (

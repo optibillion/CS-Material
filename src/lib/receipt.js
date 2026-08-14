@@ -29,7 +29,10 @@ function allotmentBookRowHTML(b, i, discPct, isReversal = false) {
   const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
   const mrp = b.unit_mrp || 0
   const qty = Math.abs(b.qty || 1)
-  const discountedPrice = mrp > 0 ? +(mrp * (1 - discPct / 100)).toFixed(2) : 0
+  // a per-book discount (set when a take-back drew from several original
+  // batches at different rates) always wins over the document-level one
+  const rowDisc = b.discount_pct ?? discPct
+  const discountedPrice = mrp > 0 ? +(mrp * (1 - rowDisc / 100)).toFixed(2) : 0
   const showPrice = mrp > 0
   const sign = isReversal ? '−' : ''
   const priceColor = isReversal ? '#dc2626' : '#bd0a0a'
@@ -39,7 +42,7 @@ function allotmentBookRowHTML(b, i, discPct, isReversal = false) {
     <div style="flex:1;min-width:0">
       <div style="font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.35">${b.title}</div>
       ${lvl ? `<div style="font-size:10px;color:#aaa;margin-top:2px">${lvl}</div>` : ''}
-      ${showPrice && discPct > 0 ? `<div style="font-size:10px;color:#bbb;margin-top:2px">MRP <span style="text-decoration:line-through">₹${fmt(mrp)}</span></div>` : ''}
+      ${showPrice && rowDisc > 0 ? `<div style="font-size:10px;color:#bbb;margin-top:2px">MRP <span style="text-decoration:line-through">₹${fmt(mrp)}</span>${isReversal ? ` · ${rowDisc}% off honored` : ''}</div>` : ''}
     </div>
     <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;padding-left:12px;flex-shrink:0;padding-top:1px">
       ${isReversal ? `<div style="background:#dc2626;border-radius:4px;padding:3px 8px;font-size:10px;font-weight:700;color:#fff;letter-spacing:1px;white-space:nowrap;text-align:center">RETURNED</div>` : ''}
@@ -191,7 +194,15 @@ function buildReversalSlipHTML(data) {
 
   const booksWithPrice = books.filter(b => (b.unit_mrp || 0) > 0)
   const hasPrice = booksWithPrice.length > 0
-  const totalRefunded = booksWithPrice.reduce((s, b) => s + (+(b.unit_mrp * (1 - discPct / 100)).toFixed(2) * Math.abs(b.qty || 1)), 0)
+  // a take-back can draw from several original batches at different
+  // discount rates — always sum using each book's own rate, never a
+  // blended one, so the refund can never mismatch the ledger
+  const totalRefunded = booksWithPrice.reduce((s, b) => {
+    const d = b.discount_pct ?? discPct
+    return s + (+(b.unit_mrp * (1 - d / 100)).toFixed(2) * Math.abs(b.qty || 1))
+  }, 0)
+  const distinctDiscounts = [...new Set(books.map(b => b.discount_pct ?? discPct))]
+  const uniformDiscPct = distinctDiscounts.length === 1 ? distinctDiscounts[0] : null
 
   const body = `
   <div style="padding:36px 48px 0;flex:1">
@@ -208,8 +219,9 @@ function buildReversalSlipHTML(data) {
           <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${distributor_phone}</td></tr>` : ''}
       ${original_batch_at ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Against Dispatch</td>
           <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${format(new Date(original_batch_at), 'dd MMM yyyy')}</td></tr>` : ''}
-      ${discPct > 0 ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Discount Honored</td>
-          <td style="padding:6px 0;font-size:13px;font-weight:700;color:#dc2626">${discPct}% (same as original)</td></tr>` : ''}
+      ${uniformDiscPct > 0 ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Discount Honored</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:700;color:#dc2626">${uniformDiscPct}% (same as original)</td></tr>` : distinctDiscounts.length > 1 ? `<tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Discount Honored</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:700;color:#dc2626">Mixed — same as original per book, see below</td></tr>` : ''}
     </table>
     ${RULER}
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#dc2626;margin-bottom:4px">Books Returned</div>
@@ -425,9 +437,10 @@ function buildGrandTotalBillHTML(data) {
 
   const sorted = batches.slice().sort((a, b) => new Date(a.allotted_at) - new Date(b.allotted_at))
   const grandQty = sorted.reduce((s, batch) => s + batch.books.reduce((bs, b) => bs + (b.qty || 1), 0), 0)
+  // per-row discount, not the batch's — a take-back batch can draw books
+  // from several original batches at different discount rates
   const grandTotal = sorted.reduce((sum, batch) => {
-    const disc = batch.discount_pct || 0
-    return sum + batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - disc / 100)).toFixed(2) * (b.qty || 1), 0)
+    return sum + batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - (b.discount_pct ?? batch.discount_pct ?? 0) / 100)).toFixed(2) * (b.qty || 1), 0)
   }, 0)
   const hasAnyPricing = sorted.some(batch => batch.books.some(b => (b.unit_mrp || 0) > 0))
 
@@ -437,13 +450,13 @@ function buildGrandTotalBillHTML(data) {
     const isReversal = !!batch.is_reversal
     const batchHasPrice = batch.books.some(b => (b.unit_mrp || 0) > 0)
     const batchOriginal = batch.books.reduce((s, b) => s + (b.unit_mrp || 0) * (b.qty || 1), 0)
-    const batchFinal = batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - discPct / 100)).toFixed(2) * (b.qty || 1), 0)
+    const batchFinal = batch.books.reduce((s, b) => s + +(+(b.unit_mrp || 0) * (1 - (b.discount_pct ?? discPct) / 100)).toFixed(2) * (b.qty || 1), 0)
 
     return `<div style="margin-bottom:20px">
       <div style="background:${isReversal ? '#fef2f2' : '#f7f7f7'};border-radius:6px;padding:8px 12px;margin-bottom:4px;display:flex;align-items:center;gap:10px">
         <span style="font-size:11px;font-weight:700;color:${isReversal ? '#dc2626' : '#bd0a0a'};text-transform:uppercase;letter-spacing:1px">${batchDate}</span>
         ${isReversal
-          ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">RETURNED${batch.reversed_batch_at ? ` · vs ${format(new Date(batch.reversed_batch_at), 'dd MMM yy')}` : ''}</span>`
+          ? `<span style="font-size:10px;background:#dc2626;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">RETURNED${batch.multiSource ? ' · vs multiple batches' : batch.reversed_batch_at ? ` · vs ${format(new Date(batch.reversed_batch_at), 'dd MMM yy')}` : ''}</span>`
           : discPct > 0 ? `<span style="font-size:10px;background:#16a34a;color:#fff;padding:2px 10px;border-radius:10px;font-weight:700">${discPct}% off</span>` : ''}
       </div>
       ${batch.books.map((b, i) => allotmentBookRowHTML(b, i, discPct, isReversal)).join('')}

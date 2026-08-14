@@ -89,7 +89,7 @@ function DistributorTotalsModal({ institution, onClose }) {
 
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl lg:max-w-4xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between px-5 py-4 border-b border-[#2a2a45] flex-shrink-0">
           <div>
             <h2 className="text-white font-bold text-base">{institution.name}</h2>
