@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, MapPin, Phone, Package, X, CreditCard, User, Truck, CheckSquare, Square } from 'lucide-react'
+import { Search, MapPin, Phone, Package, X, CreditCard, User, Truck, CheckSquare, Square, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../../store/authStore'
@@ -49,7 +49,7 @@ function Field({ label, value }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, readOnly }) {
+function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, readOnly }) {
   const [awbInput, setAwbInput] = useState('')
   const [showAwbInput, setShowAwbInput] = useState(false)
 
@@ -179,6 +179,15 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, readOnl
               <Field label="Payment ID" value={order.razorpay_payment_id} />
             </div>
           </Section>
+
+          {!readOnly && (
+            <div className="mt-4 pt-4 border-t border-[#2a2a45]">
+              <button onClick={() => onDeleteRequest(order)}
+                className="flex items-center gap-2 text-sm text-red-400/80 hover:text-red-400 transition-colors">
+                <Trash2 size={14} /> Delete this order
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -191,6 +200,7 @@ export default function WebsiteOrders() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [deleteConfirm, setDeleteConfirm] = useState(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const [dateFrom, setDateFrom] = useState(today)
@@ -237,6 +247,15 @@ export default function WebsiteOrders() {
     if (error) { toast.error('Failed to update delivery status'); return }
     applyUpdate(order.id, patch)
     toast.success(delivered ? 'Marked as delivered' : 'Delivery unmarked')
+  }
+
+  async function handleDelete(order) {
+    const { error } = await supabase.from('website_orders').delete().eq('id', order.id)
+    if (error) { toast.error('Failed to delete — has add_website_orders_delete.sql been run in Supabase?'); return }
+    setOrders(prev => prev.filter(o => o.id !== order.id))
+    setSelectedOrder(prev => prev && prev.id === order.id ? null : prev)
+    setDeleteConfirm(null)
+    toast.success('Order deleted')
   }
 
   const filtered = useMemo(() => {
@@ -322,30 +341,44 @@ export default function WebsiteOrders() {
             No website orders {orders.length === 0 ? 'yet — new paid orders on the website will appear here automatically' : 'match this filter'}
           </div>
         ) : filtered.map(o => (
-          <button
+          <div
             key={o.id}
-            type="button"
-            onClick={() => setSelectedOrder(o)}
-            className="w-full text-left bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4 hover:border-[#3a3a55] active:opacity-70 transition-all touch-manipulation"
+            className="relative w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-xl hover:border-[#3a3a55] transition-all"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-white font-semibold text-sm truncate">{o.buyer_name || 'Unknown'}</p>
-                  <span className="text-[#4b5563] text-xs flex-shrink-0">#{o.cs_order_id}</span>
+            <button
+              type="button"
+              onClick={() => setSelectedOrder(o)}
+              className="w-full text-left p-4 active:opacity-70 transition-all touch-manipulation"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-white font-semibold text-sm truncate">{o.buyer_name || 'Unknown'}</p>
+                    <span className="text-[#4b5563] text-xs flex-shrink-0">#{o.cs_order_id}</span>
+                  </div>
+                  <p className="text-[#9ca3af] text-xs mt-1 truncate">{o.product_name}</p>
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    {o.phone && <span className="text-[#6b7280] text-xs flex items-center gap-1"><Phone size={10} />{o.phone}</span>}
+                    <span className="text-[#4b5563] text-xs">{safeFormat(o.order_date, 'dd MMM yy, hh:mm a')}</span>
+                  </div>
                 </div>
-                <p className="text-[#9ca3af] text-xs mt-1 truncate">{o.product_name}</p>
-                <div className="flex items-center gap-3 mt-1 flex-wrap">
-                  {o.phone && <span className="text-[#6b7280] text-xs flex items-center gap-1"><Phone size={10} />{o.phone}</span>}
-                  <span className="text-[#4b5563] text-xs">{safeFormat(o.order_date, 'dd MMM yy, hh:mm a')}</span>
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0 pr-6">
+                  <FulfillmentBadge order={o} />
+                  {o.amount != null && <span className="text-[#f0a500] font-bold text-sm whitespace-nowrap">₹{Number(o.amount).toLocaleString('en-IN')}</span>}
                 </div>
               </div>
-              <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-                <FulfillmentBadge order={o} />
-                {o.amount != null && <span className="text-[#f0a500] font-bold text-sm whitespace-nowrap">₹{Number(o.amount).toLocaleString('en-IN')}</span>}
-              </div>
-            </div>
-          </button>
+            </button>
+            {!isViewAdmin && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDeleteConfirm(o) }}
+                title="Delete order"
+                className="absolute top-4 right-4 text-[#4b5563] hover:text-red-400 p-1 transition-colors"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+          </div>
         ))}
       </div>
 
@@ -355,8 +388,43 @@ export default function WebsiteOrders() {
         onShip={handleShip}
         onUnship={handleUnship}
         onDeliver={handleDeliver}
+        onDeleteRequest={(order) => setDeleteConfirm(order)}
         readOnly={isViewAdmin}
       />
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[60] p-4" onClick={() => setDeleteConfirm(null)}>
+          <div
+            className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 max-w-sm w-full space-y-4 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-base">Delete Order?</h3>
+                <p className="text-[#6b7280] text-xs mt-0.5">This action cannot be undone</p>
+              </div>
+            </div>
+            <p className="text-[#9ca3af] text-sm">
+              Permanently delete order <span className="text-white font-semibold">#{deleteConfirm.cs_order_id}</span>{' '}
+              from <span className="text-white font-semibold">{deleteConfirm.buyer_name || 'Unknown'}</span>?
+              Use this to remove duplicate orders — it won't affect any other order's count or revenue.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setDeleteConfirm(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-sm font-medium transition-all">
+                Cancel
+              </button>
+              <button onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2">
+                <Trash2 size={14} /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
