@@ -31,6 +31,7 @@ export default function Sales() {
   const [saleUnitFilter, setSaleUnitFilter] = useState('all')
   const [saleBookSearch, setSaleBookSearch] = useState('')
   const [expandedTxns, setExpandedTxns] = useState({})
+  const [returningKeys, setReturningKeys] = useState(new Set())
   const [paymentMode, setPaymentMode] = useState('cash')
 
   const today = new Date().toISOString().slice(0, 10)
@@ -61,31 +62,46 @@ export default function Sales() {
 
   async function fetchSales() {
     setLoading(true)
-    let query = supabase.from('sales')
-      .select('*, books(title, exam_level, unit, part, medium), users!sales_sold_by_fkey(name)')
-      .order('sold_at', { ascending: false })
-    if (showAll) {
-      query = query.limit(10000)
-    } else {
-      if (dateFrom) query = query.gte('sold_at', `${dateFrom}T00:00:00`)
-      if (dateTo) query = query.lte('sold_at', `${dateTo}T23:59:59.999`)
-      query = query.limit(10000)
+    // Supabase/PostgREST caps rows per request (commonly 1000) regardless of
+    // .limit() — a single request silently truncates once sales pass that
+    // cap, dropping the oldest rows since we sort sold_at descending. Page
+    // through with .range() to fetch everything.
+    const PAGE_SIZE = 1000
+    let all = []
+    for (let page = 0; ; page++) {
+      let query = supabase.from('sales')
+        .select('*, books(title, exam_level, unit, part, medium), users!sales_sold_by_fkey(name)')
+        .order('sold_at', { ascending: false })
+        .range(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE - 1)
+      if (!showAll) {
+        if (dateFrom) query = query.gte('sold_at', `${dateFrom}T00:00:00`)
+        if (dateTo) query = query.lte('sold_at', `${dateTo}T23:59:59.999`)
+      }
+      const { data } = await query
+      all = all.concat(data || [])
+      if (!data || data.length < PAGE_SIZE) break
     }
-    const { data } = await query
-    setSales(data || []); setLoading(false)
+    setSales(all); setLoading(false)
   }
 
   async function handleReturn(txn) {
-    const { error } = await supabase.from('sales')
-      .update({ is_returned: true, return_handled_by: profile?.id, returned_at: new Date().toISOString() })
-      .in('id', txn.ids)
-    if (error) { toast.error('Failed'); return }
-    // Restore stock for each book that wasn't already returned
-    const toRestore = txn.books.filter(b => !b.is_returned)
-    await Promise.all(toRestore.map(b => adjustStock(b.book_id, b.qty || 1)))
-    toast.success('Sale marked as returned')
-    logAction('SALE_RETURNED', `${txn.books.map(b => b.title).join(', ')} — ${txn.buyer_name} (${txn.buyer_phone || 'no phone'})`)
-    fetchSales(); fetchSalesStats(); fetchAllTimeCount()
+    if (returningKeys.has(txn.key)) return
+    setReturningKeys(prev => new Set(prev).add(txn.key))
+    try {
+      const { data, error } = await supabase.from('sales')
+        .update({ is_returned: true, return_handled_by: profile?.id, returned_at: new Date().toISOString() })
+        .in('id', txn.ids).eq('is_returned', false).select('id')
+      if (error) { toast.error('Failed'); return }
+      if (!data || data.length === 0) { toast.error('Already returned'); fetchSales(); return }
+      // Restore stock for each book that wasn't already returned
+      const toRestore = txn.books.filter(b => !b.is_returned)
+      await Promise.all(toRestore.map(b => adjustStock(b.book_id, b.qty || 1)))
+      toast.success('Sale marked as returned')
+      logAction('SALE_RETURNED', `${txn.books.map(b => b.title).join(', ')} — ${txn.buyer_name} (${txn.buyer_phone || 'no phone'})`)
+      fetchSales(); fetchSalesStats(); fetchAllTimeCount()
+    } finally {
+      setReturningKeys(prev => { const next = new Set(prev); next.delete(txn.key); return next })
+    }
   }
 
   async function openRecordSale() {
@@ -378,9 +394,9 @@ export default function Sales() {
                 <Receipt size={13} /> View Receipt
               </button>
               {!txn.all_returned && !isViewAdmin && (
-                <button onClick={() => handleReturn(txn)}
-                  className="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all">
-                  <RotateCcw size={12} /> Mark Returned
+                <button onClick={() => handleReturn(txn)} disabled={returningKeys.has(txn.key)}
+                  className="flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-lg bg-[#2a2a45] hover:bg-red-500/20 hover:text-red-400 text-[#9ca3af] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  <RotateCcw size={12} /> {returningKeys.has(txn.key) ? 'Returning...' : 'Mark Returned'}
                 </button>
               )}
             </div>
