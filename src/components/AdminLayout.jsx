@@ -1,4 +1,4 @@
-import { LayoutDashboard, Users, BookOpen, Package, Send, ShoppingCart, Building2, Archive, UserCog, FileText, ClipboardList, LogOut, Menu, X, GraduationCap, Tag, ShoppingBag, Globe, PhoneMissed } from 'lucide-react'
+import { LayoutDashboard, Users, BookOpen, Package, Send, ShoppingCart, Building2, Archive, UserCog, FileText, ClipboardList, LogOut, Menu, X, GraduationCap, Tag, ShoppingBag, Boxes, Globe, PhoneMissed } from 'lucide-react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
@@ -21,6 +21,7 @@ const navItems = [
   { to: '/admin/website-failed-orders', label: 'Website Failed Orders', icon: PhoneMissed },
   { to: '/admin/allotments', label: 'Distributors', icon: Building2 },
   { to: '/admin/bags', label: 'Bags', icon: ShoppingBag },
+  { to: '/admin/internal', label: 'Internal', icon: Boxes },
   { to: '/admin/users', label: 'Users', icon: UserCog },
   { to: '/admin/reports', label: 'Reports', icon: FileText },
   { to: '/admin/audit', label: 'Audit Log', icon: ClipboardList },

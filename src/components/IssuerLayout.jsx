@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { brand } from '../lib/brand'
-import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag, Globe, PhoneMissed } from 'lucide-react'
+import { LayoutDashboard, Users, ShoppingCart, LogOut, Menu, X, Building2, Archive, Tag, ShoppingBag, Boxes, Globe, PhoneMissed } from 'lucide-react'
 import { useState } from 'react'
 import UniversalSearch from './UniversalSearch'
 import { useNewOrdersCount } from '../hooks/useNewOrdersCount'
@@ -15,7 +15,7 @@ const baseNavItems = [
 ]
 
 export default function IssuerLayout() {
-  const { profile, logout, allotmentAccess, stockAccess, priceAccess, websiteOrdersAccess, failedOrdersAccess } = useAuthStore()
+  const { profile, logout, allotmentAccess, stockAccess, priceAccess, websiteOrdersAccess, failedOrdersAccess, internalAccess } = useAuthStore()
   const newOrdersCount = useNewOrdersCount(websiteOrdersAccess)
   const newFailedOrdersCount = useNewFailedOrdersCount(failedOrdersAccess)
   const navItems = [
@@ -25,6 +25,7 @@ export default function IssuerLayout() {
     ...(priceAccess ? [{ to: '/issuer/books', label: 'Book Prices', icon: Tag }] : []),
     ...(websiteOrdersAccess ? [{ to: '/issuer/website-orders', label: 'Website Orders', icon: Globe }] : []),
     ...(failedOrdersAccess ? [{ to: '/issuer/website-failed-orders', label: 'Website Failed Orders', icon: PhoneMissed }] : []),
+    ...(internalAccess ? [{ to: '/issuer/internal', label: 'Internal', icon: Boxes }] : []),
   ]
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
