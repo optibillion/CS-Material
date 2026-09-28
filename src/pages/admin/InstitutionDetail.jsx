@@ -645,14 +645,25 @@ export default function InstitutionDetail() {
 
   async function saveEditQty() {
     if (!editQty) return
-    const newQty = parseInt(editQty.value)
-    if (!newQty || newQty < 1) { toast.error('Invalid quantity'); return }
     const batch = batches.find(b => b.allotted_at === editQty.batchAt)
     const book = batch?.books.find(b => b.book_id === editQty.bookId)
-    if (!book || newQty === book.qty) { setEditQty(null); return }
+    if (!batch || !book) { setEditQty(null); return }
 
-    const diff = newQty - book.qty // positive = qty increased → deduct stock; negative = qty decreased → add stock back
+    const newMag = parseInt(editQty.value)
+    if (!newMag || newMag < 1) { toast.error('Invalid quantity'); return }
+    const oldMag = Math.abs(book.qty)
+    if (newMag === oldMag) { setEditQty(null); return }
 
+    // a reversal row can never claim more copies back than the original
+    // batch actually gave out (minus whatever other returns already cover)
+    if (batch.is_reversal) {
+      const originalBatch = batches.find(b => !b.is_reversal && b.allotted_at === book.reversed_batch_at)
+      const originalRow = originalBatch?.books.find(b => b.book_id === book.book_id)
+      const maxReturnable = originalRow ? originalRow.remainingQty + oldMag : Infinity
+      if (newMag > maxReturnable) { toast.error(`Can't exceed ${maxReturnable} — that's all that remains issued from that batch`); return }
+    }
+
+    const newQty = batch.is_reversal ? -newMag : newMag
     const { error } = await supabase
       .from('allotments')
       .update({ qty: newQty })
@@ -661,23 +672,25 @@ export default function InstitutionDetail() {
       .eq('book_id', editQty.bookId)
     if (error) { toast.error('Failed to update quantity'); return }
 
-    // Adjust stock by the difference
+    // stock delta: issuance qty increase deducts more stock; reversal qty
+    // increase (more copies returned) adds stock back — opposite directions
+    const diffMag = newMag - oldMag
+    const stockDelta = batch.is_reversal ? diffMag : -diffMag
     let stockNote = ''
     const entry = stockEntries.find(e => e.book_id === editQty.bookId)
     if (entry) {
-      const newAvail = Math.max(0, (entry.available_qty || 0) - diff)
+      const newAvail = Math.max(0, (entry.available_qty || 0) + stockDelta)
       await supabase.from('stock').update({ available_qty: newAvail }).eq('id', entry.id)
-      stockNote = diff > 0
-        ? ` [stock deducted ${diff}]`
-        : ` [stock restored ${Math.abs(diff)}]`
+      stockNote = stockDelta > 0 ? ` [stock +${stockDelta}]` : ` [stock ${stockDelta}]`
     }
 
     const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
-    logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: qty ${book.qty} → ${newQty} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})${stockNote}`)
+    const label = batch.is_reversal ? 'return qty' : 'qty'
+    logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: ${label} ${oldMag} → ${newMag} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})${stockNote}`)
     const stockMsg = entry
-      ? diff > 0
-        ? `Qty updated · ${diff} copies deducted from stock`
-        : `Qty updated · ${Math.abs(diff)} copies added back to stock`
+      ? stockDelta > 0
+        ? `Qty updated · ${stockDelta} copies added to stock`
+        : `Qty updated · ${Math.abs(stockDelta)} copies deducted from stock`
       : 'Quantity updated'
     toast.success(stockMsg)
     setEditQty(null)
@@ -690,42 +703,66 @@ export default function InstitutionDetail() {
     const oldBook = changeBookModal.currentBook
     const newBook = books.find(b => b.id === changeBookTarget)
     if (!newBook) { setChangingBook(false); return }
-    const qty = changeBookModal.qty
+    const isReversal = changeBookModal.is_reversal
+    const qty = Math.abs(changeBookModal.qty)
+
+    // for a reversal row, price it the way the original batch priced the new
+    // title — never today's MRP, so the refund figure stays honest
+    let newUnitMrp = newBook.mrp || null
+    if (isReversal) {
+      const originalBatch = batches.find(b => !b.is_reversal && b.allotted_at === oldBook.reversed_batch_at)
+      const originalRow = originalBatch?.books.find(b => b.book_id === changeBookTarget)
+      if (originalRow) newUnitMrp = originalRow.unit_mrp
+    }
 
     const { error } = await supabase
       .from('allotments')
-      .update({ book_id: changeBookTarget, unit_mrp: newBook.mrp || null })
+      .update({ book_id: changeBookTarget, unit_mrp: newUnitMrp })
       .eq('institution_id', id)
       .eq('allotted_at', changeBookModal.batchAt)
       .eq('book_id', changeBookModal.bookId)
     if (error) { toast.error('Failed to change book'); setChangingBook(false); return }
 
-    // Restore stock for old book
+    // old book's stock adjustment: issuance restores it (it's no longer
+    // deducted); reversal removes it (the return credit no longer applies)
     const oldEntry = stockEntries.find(e => e.book_id === changeBookModal.bookId)
     if (oldEntry) {
-      await supabase.from('stock').update({ available_qty: (oldEntry.available_qty || 0) + qty }).eq('id', oldEntry.id)
+      const delta = isReversal ? -qty : qty
+      await supabase.from('stock').update({ available_qty: Math.max(0, (oldEntry.available_qty || 0) + delta) }).eq('id', oldEntry.id)
     }
 
-    // Deduct stock for new book
-    const allNewEntries = stockEntries.filter(e => e.book_id === changeBookTarget)
-    if (allNewEntries.length === 0) {
-      toast(`ℹ️ No stock entry found for new book — stock not adjusted`, { duration: 4000 })
-    } else {
-      let remaining = qty
-      const availableEntries = allNewEntries.filter(e => (e.available_qty || 0) > 0).sort((a, z) => z.available_qty - a.available_qty)
-      for (const entry of availableEntries) {
-        if (remaining <= 0) break
-        const deduct = Math.min(remaining, entry.available_qty)
-        await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-        remaining -= deduct
+    if (isReversal) {
+      // the new book is what actually came back — credit its stock directly
+      const newEntry = stockEntries.find(e => e.book_id === changeBookTarget)
+      if (newEntry) {
+        await supabase.from('stock').update({ available_qty: (newEntry.available_qty || 0) + qty }).eq('id', newEntry.id)
+      } else {
+        toast(`ℹ️ No stock entry found for new book — stock not adjusted`, { duration: 4000 })
       }
-      if (remaining > 0) toast(`ℹ️ Only ${qty - remaining} of ${qty} copies available in stock — deducted what was available`, { duration: 4000 })
+    } else {
+      // Deduct stock for new book
+      const allNewEntries = stockEntries.filter(e => e.book_id === changeBookTarget)
+      if (allNewEntries.length === 0) {
+        toast(`ℹ️ No stock entry found for new book — stock not adjusted`, { duration: 4000 })
+      } else {
+        let remaining = qty
+        const availableEntries = allNewEntries.filter(e => (e.available_qty || 0) > 0).sort((a, z) => z.available_qty - a.available_qty)
+        for (const entry of availableEntries) {
+          if (remaining <= 0) break
+          const deduct = Math.min(remaining, entry.available_qty)
+          await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
+          remaining -= deduct
+        }
+        if (remaining > 0) toast(`ℹ️ Only ${qty - remaining} of ${qty} copies available in stock — deducted what was available`, { duration: 4000 })
+      }
     }
 
     const oldLvl = [oldBook.exam_level, oldBook.unit, oldBook.part].filter(Boolean).join(' › ')
     const newLvl = [newBook.exam_level, newBook.unit, newBook.part].filter(Boolean).join(' › ')
-    logAction('ALLOTMENT_BOOK_CHANGED', `${institution.name} — "${oldLvl} (${oldBook.medium})" → "${newLvl} (${newBook.medium})" ×${qty} (batch: ${format(new Date(changeBookModal.batchAt), 'dd MMM yy')}) [stock adjusted]`)
-    toast.success(`Book changed: ${oldBook.medium} → ${newBook.medium} · ${qty} copies restored from old, ${qty} deducted from new`, { duration: 5000 })
+    logAction('ALLOTMENT_BOOK_CHANGED', `${institution.name} — ${isReversal ? 'return ' : ''}"${oldLvl} (${oldBook.medium})" → "${newLvl} (${newBook.medium})" ×${qty} (batch: ${format(new Date(changeBookModal.batchAt), 'dd MMM yy')})${isReversal ? ' [reversal — stock credit moved]' : ' [stock adjusted]'}`)
+    toast.success(isReversal
+      ? `Return updated: ${oldBook.medium} → ${newBook.medium} · stock credit moved to the new title`
+      : `Book changed: ${oldBook.medium} → ${newBook.medium} · ${qty} copies restored from old, ${qty} deducted from new`, { duration: 5000 })
     setChangeBookModal(null)
     setChangeBookTarget('')
     setChangingBook(false)
@@ -974,7 +1011,7 @@ export default function InstitutionDetail() {
                       )
                     )}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                  <div className="flex items-center gap-2 flex-shrink-0 ml-3 flex-wrap justify-end">
                     {batch.is_reversal ? (
                       <button
                         onClick={() => openReversalSlipModal(batch)}
@@ -983,30 +1020,28 @@ export default function InstitutionDetail() {
                         Receipt
                       </button>
                     ) : (
-                      <>
-                        <button
-                          onClick={() => openSlipModal(batch)}
-                          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-                          <FileDown size={12} />
-                          Slip
-                        </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => setEditDiscountModal({ batch, value: String(batch.discount_pct || 0) })}
-                            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all ${batch.discount_pct > 0 ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' : 'bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white'}`}>
-                            <Percent size={12} />
-                            {batch.discount_pct > 0 ? `${batch.discount_pct}%` : 'Discount'}
-                          </button>
-                        )}
-                        {isAdmin && (
-                          <button
-                            onClick={() => { setEditDateValue(batch.allotted_at.slice(0, 10)); setEditDateModal(batch) }}
-                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
-                            <CalendarDays size={12} />
-                            Edit Date
-                          </button>
-                        )}
-                      </>
+                      <button
+                        onClick={() => openSlipModal(batch)}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                        <FileDown size={12} />
+                        Slip
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => setEditDiscountModal({ batch, value: String(batch.discount_pct || 0) })}
+                        className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all ${batch.discount_pct > 0 ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20' : 'bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white'}`}>
+                        <Percent size={12} />
+                        {batch.discount_pct > 0 ? `${batch.discount_pct}%` : 'Discount'}
+                      </button>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => { setEditDateValue(batch.allotted_at.slice(0, 10)); setEditDateModal(batch) }}
+                        className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-[#9ca3af] hover:text-white transition-all">
+                        <CalendarDays size={12} />
+                        Edit Date
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1026,10 +1061,10 @@ export default function InstitutionDetail() {
                         {!batch.is_reversal && b.returnedQty > 0 && (
                           <span className="text-red-400 text-[10px] flex-shrink-0">−{b.returnedQty} returned</span>
                         )}
-                        {isAdmin && !batch.is_reversal && !isEditingThis && b.returnedQty === 0 && (
+                        {isAdmin && !isEditingThis && (batch.is_reversal || b.returnedQty === 0) && (
                           <button
-                            onClick={() => { setChangeBookTarget(''); setChangeBookSearch(''); setChangeBookModal({ batchAt: batch.allotted_at, bookId: b.book_id, qty: b.qty, currentBook: b }) }}
-                            className="text-[#4b5563] hover:text-blue-400 transition-colors flex-shrink-0" title="Change book">
+                            onClick={() => { setChangeBookTarget(''); setChangeBookSearch(''); setChangeBookModal({ batchAt: batch.allotted_at, bookId: b.book_id, qty: b.qty, currentBook: b, is_reversal: batch.is_reversal }) }}
+                            className="text-[#4b5563] hover:text-blue-400 transition-colors flex-shrink-0" title={batch.is_reversal ? 'Change returned book' : 'Change book'}>
                             <ArrowLeftRight size={10} />
                           </button>
                         )}
@@ -1049,10 +1084,10 @@ export default function InstitutionDetail() {
                         ) : (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
                             <span className={`text-xs font-semibold ${batch.is_reversal ? 'text-red-400' : 'text-white'}`}>{batch.is_reversal ? '−' : ''}×{Math.abs(b.qty)}</span>
-                            {isAdmin && !batch.is_reversal && (
+                            {isAdmin && (
                               <button
-                                onClick={() => setEditQty({ batchAt: batch.allotted_at, bookId: b.book_id, value: String(b.qty) })}
-                                className="text-[#4b5563] hover:text-[#9ca3af] transition-colors">
+                                onClick={() => setEditQty({ batchAt: batch.allotted_at, bookId: b.book_id, value: String(Math.abs(b.qty)) })}
+                                className="text-[#4b5563] hover:text-[#9ca3af] transition-colors" title={batch.is_reversal ? 'Edit returned qty' : 'Edit qty'}>
                                 <Pencil size={10} />
                               </button>
                             )}
@@ -1119,29 +1154,40 @@ export default function InstitutionDetail() {
       {/* Change book modal — admin only */}
       {changeBookModal && (() => {
         const cb = changeBookModal
-        const sameUnitBooks = books.filter(b => b.id !== cb.bookId && b.unit === cb.currentBook.unit && b.exam_level === cb.currentBook.exam_level)
+        // a reversal row can only be reassigned to a book that was actually
+        // part of the original batch it's crediting — otherwise remainingQty/
+        // returnedQty tracking on that original batch silently desyncs
+        const originalBatch = cb.is_reversal ? batches.find(b => !b.is_reversal && b.allotted_at === cb.currentBook.reversed_batch_at) : null
+        const allowedIds = cb.is_reversal ? new Set((originalBatch?.books || []).filter(b => b.book_id !== cb.bookId).map(b => b.book_id)) : null
+        const candidateBooks = cb.is_reversal ? books.filter(b => allowedIds.has(b.id)) : books.filter(b => b.id !== cb.bookId)
+        const sameUnitBooks = cb.is_reversal ? candidateBooks : candidateBooks.filter(b => b.unit === cb.currentBook.unit && b.exam_level === cb.currentBook.exam_level)
         const searchLower = changeBookSearch.toLowerCase()
-        const filteredBooks = (changeBookSearch ? books.filter(b => b.id !== cb.bookId && (b.title?.toLowerCase().includes(searchLower) || b.unit?.toLowerCase().includes(searchLower) || b.part?.toLowerCase().includes(searchLower))) : sameUnitBooks)
+        const filteredBooks = changeBookSearch
+          ? candidateBooks.filter(b => b.title?.toLowerCase().includes(searchLower) || b.unit?.toLowerCase().includes(searchLower) || b.part?.toLowerCase().includes(searchLower))
+          : sameUnitBooks
         return (
           <div className="fixed inset-0 bg-black/70 z-[60] flex items-center justify-center px-4">
             <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-sm flex flex-col max-h-[85vh]">
               <div className="px-5 pt-5 pb-3 flex-shrink-0">
-                <h2 className="text-white font-semibold text-base mb-1">Change Book</h2>
+                <h2 className="text-white font-semibold text-base mb-1">{cb.is_reversal ? 'Change Returned Book' : 'Change Book'}</h2>
                 <div className="bg-[#12121f] rounded-lg px-3 py-2 mb-3">
-                  <p className="text-[#6b7280] text-[10px] uppercase tracking-wide mb-0.5">Current</p>
+                  <p className="text-[#6b7280] text-[10px] uppercase tracking-wide mb-0.5">{cb.is_reversal ? 'Currently recorded as returned' : 'Current'}</p>
                   <p className="text-white text-xs font-semibold">{[cb.currentBook.exam_level, cb.currentBook.unit, cb.currentBook.part].filter(Boolean).join(' › ')}</p>
                   <p className="text-[#9ca3af] text-[11px] truncate">{cb.currentBook.title}</p>
-                  <p className="text-orange-400 text-[10px] mt-0.5 capitalize">{cb.currentBook.medium} · ×{cb.qty}</p>
+                  <p className="text-orange-400 text-[10px] mt-0.5 capitalize">{cb.currentBook.medium} · ×{Math.abs(cb.qty)}</p>
                 </div>
                 <div className="relative">
                   <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6b7280]" />
                   <input
                     value={changeBookSearch}
                     onChange={e => setChangeBookSearch(e.target.value)}
-                    placeholder={changeBookSearch ? 'Search all books…' : `Showing same paper (${cb.currentBook.unit}) — search to see all`}
+                    placeholder={cb.is_reversal ? 'Search books from that original batch…' : (changeBookSearch ? 'Search all books…' : `Showing same paper (${cb.currentBook.unit}) — search to see all`)}
                     className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg pl-8 pr-3 py-2 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]"
                   />
                 </div>
+                {cb.is_reversal && (
+                  <p className="text-[#4b5563] text-[10px] mt-1.5">Only books issued in the original batch can be selected, so totals and stock stay accurate.</p>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-1.5">
                 {filteredBooks.length === 0 ? (
@@ -1304,12 +1350,13 @@ export default function InstitutionDetail() {
             <p className="text-[#6b7280] text-xs mb-1">
               {format(new Date(editDiscountModal.batch.allotted_at), 'dd MMM yyyy')} · {editDiscountModal.batch.books.length} title{editDiscountModal.batch.books.length !== 1 ? 's' : ''} · {editDiscountModal.batch.totalQty} copies
             </p>
-            {editDiscountModal.batch.totalValue > 0 && (() => {
+            {Math.abs(editDiscountModal.batch.totalValue) > 0 && (() => {
               const newPct = Math.min(100, Math.max(0, parseInt(editDiscountModal.value) || 0))
-              const newValue = editDiscountModal.batch.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - newPct / 100)).toFixed(2) * (b.qty || 1), 0)
+              const oldValue = editDiscountModal.batch.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - (editDiscountModal.batch.discount_pct || 0) / 100)).toFixed(2) * Math.abs(b.qty || 1), 0)
+              const newValue = editDiscountModal.batch.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - newPct / 100)).toFixed(2) * Math.abs(b.qty || 1), 0)
               return (
                 <p className="text-[#f0a500] text-xs mb-4">
-                  Value: ₹{Math.round(editDiscountModal.batch.books.reduce((s, b) => s + (+(b.unit_mrp || 0) * (1 - (editDiscountModal.batch.discount_pct || 0) / 100)).toFixed(2) * (b.qty || 1), 0))} → ₹{Math.round(newValue)}
+                  Value: ₹{Math.round(oldValue)} → ₹{Math.round(newValue)}
                 </p>
               )
             })()}
