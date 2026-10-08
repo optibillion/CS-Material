@@ -535,3 +535,86 @@ export function saveGrandBillFile(blob, distributorName) {
   const filename = `Grand-Bill-${distributorName.replace(/\s+/g, '-')}.pdf`
   downloadBlob(blob, filename)
 }
+
+function stockRowHTML(s, i) {
+  const b = s.books || {}
+  const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
+  const meta = [b.medium, b.category].filter(Boolean).join(' · ')
+  const isOut = s.available_qty === 0
+  const isLow = !isOut && s.available_qty <= s.low_stock_threshold
+  const statusColor = isOut ? '#dc2626' : isLow ? '#d97706' : '#16a34a'
+  const statusLabel = isOut ? 'OUT' : isLow ? 'LOW' : 'OK'
+  return `<tr style="border-bottom:1px solid #f0f0f0">
+    <td style="padding:8px 6px;font-size:10px;color:#bbb;vertical-align:top">${i + 1}</td>
+    <td style="padding:8px 6px;vertical-align:top">
+      <div style="font-size:12px;font-weight:600;color:#1a1a1a;line-height:1.3">${b.title || '—'}</div>
+      ${lvl ? `<div style="font-size:9px;color:#aaa;margin-top:1px">${lvl}</div>` : ''}
+      ${meta ? `<div style="font-size:9px;color:#aaa;margin-top:1px;text-transform:capitalize">${meta}</div>` : ''}
+    </td>
+    <td style="padding:8px 6px;text-align:right;font-size:12px;font-weight:700;color:${statusColor};vertical-align:top">${s.available_qty}</td>
+    <td style="padding:8px 6px;text-align:right;font-size:11px;color:#555;vertical-align:top">${s.total_qty}</td>
+    <td style="padding:8px 6px;text-align:right;vertical-align:top"><span style="font-size:9px;font-weight:700;color:${statusColor}">${statusLabel}</span></td>
+  </tr>`
+}
+
+function buildStockReportHTML(stock) {
+  const date = format(new Date(), 'dd MMM yyyy, hh:mm a')
+  const sorted = stock.slice().sort((a, b) => (a.books?.title || '').localeCompare(b.books?.title || ''))
+  const totalAvailable = sorted.reduce((s, r) => s + (r.available_qty || 0), 0)
+  const totalReceived = sorted.reduce((s, r) => s + (r.total_qty || 0), 0)
+  const lowCount = sorted.filter(r => r.available_qty > 0 && r.available_qty <= r.low_stock_threshold).length
+  const outCount = sorted.filter(r => r.available_qty === 0).length
+
+  const summaryCard = (label, value, color) => `
+    <div style="flex:1;background:#f7f7f7;border-radius:8px;padding:12px;text-align:center">
+      <div style="font-size:20px;font-weight:800;color:${color}">${value}</div>
+      <div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:0.5px;margin-top:2px">${label}</div>
+    </div>`
+
+  const body = `
+  <div style="padding:36px 48px 0;flex:1">
+    <table style="width:100%;border-collapse:collapse;margin-bottom:0">
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;width:140px;vertical-align:top">Generated</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${date}</td></tr>
+      <tr><td style="padding:6px 0;color:#999;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;vertical-align:top">Books Tracked</td>
+          <td style="padding:6px 0;font-size:13px;font-weight:600;color:#1a1a1a">${sorted.length}</td></tr>
+    </table>
+    ${RULER}
+    <div style="display:flex;gap:10px;margin-bottom:20px">
+      ${summaryCard('Available', totalAvailable, '#16a34a')}
+      ${summaryCard('Total Received', totalReceived, '#1a1a1a')}
+      ${summaryCard('Low Stock', lowCount, '#d97706')}
+      ${summaryCard('Out of Stock', outCount, '#dc2626')}
+    </div>
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#bd0a0a;margin-bottom:8px">Full Stock Details</div>
+    <table style="width:100%;border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom:2px solid #1a1a1a">
+          <th style="padding:6px;text-align:left;font-size:9px;color:#888;text-transform:uppercase">#</th>
+          <th style="padding:6px;text-align:left;font-size:9px;color:#888;text-transform:uppercase">Book</th>
+          <th style="padding:6px;text-align:right;font-size:9px;color:#888;text-transform:uppercase">Available</th>
+          <th style="padding:6px;text-align:right;font-size:9px;color:#888;text-transform:uppercase">Total</th>
+          <th style="padding:6px;text-align:right;font-size:9px;color:#888;text-transform:uppercase">Status</th>
+        </tr>
+      </thead>
+      <tbody>${sorted.map(stockRowHTML).join('')}</tbody>
+    </table>
+  </div>
+  <div style="padding:28px 48px 36px;text-align:center">
+    ${RULER}
+    <div style="font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:6px">Champion Square Notes</div>
+    <div style="font-size:10px;color:#aaa;margin-bottom:6px">Internal stock report — not for distribution.</div>
+    <div style="font-size:10px;font-weight:700;color:#bd0a0a;letter-spacing:1px">Excellence · Experience · Trust</div>
+  </div>`
+
+  return pageShell('Stock Report — Champion Square', 'STOCK REPORT', body)
+}
+
+export async function generateStockReportBlob(stock) {
+  return generatePDFFromHTML(buildStockReportHTML(stock))
+}
+
+export function downloadStockReport(blob) {
+  const filename = `Stock-Report-${format(new Date(), 'dd-MMM-yyyy-HHmm')}.pdf`
+  downloadBlob(blob, filename)
+}

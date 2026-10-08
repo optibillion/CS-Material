@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
-import { Plus, Search, AlertTriangle, History, Package, X, BookOpen, ChevronRight, ChevronLeft } from 'lucide-react'
+import { Plus, Search, AlertTriangle, History, Package, X, BookOpen, ChevronRight, ChevronLeft, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { logAction } from '../../lib/audit'
 import { format } from 'date-fns'
 import { useAuthStore } from '../../store/authStore'
+import { generateStockReportBlob, downloadStockReport } from '../../lib/receipt'
 
 const MEDIUM_LABELS = { hindi: 'Hindi', english: 'English', both: 'Both' }
 const MEDIUM_COLORS = { hindi: 'bg-orange-500/20 text-orange-400 border-orange-500/30', english: 'bg-blue-500/20 text-blue-400 border-blue-500/30', both: 'bg-purple-500/20 text-purple-400 border-purple-500/30' }
@@ -23,6 +24,7 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
   const [step, setStep] = useState('select')
   const [confirmData, setConfirmData] = useState([])
   const [loadingConfirm, setLoadingConfirm] = useState(false)
+  const [confirmingAll, setConfirmingAll] = useState(false)
 
   useEffect(() => {
     if (open) {
@@ -90,10 +92,16 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
   }
 
   async function handleConfirmAll() {
-    for (const item of confirmData) {
-      await onSave({ bookId: item.book.id, qty: item.qty, note: item.note || null, existingEntry: item.existingEntry })
+    if (confirmingAll) return
+    setConfirmingAll(true)
+    try {
+      for (const item of confirmData) {
+        await onSave({ bookId: item.book.id, qty: item.qty, note: item.note || null, existingEntry: item.existingEntry })
+      }
+      onClose()
+    } finally {
+      setConfirmingAll(false)
     }
-    onClose()
   }
 
   if (!open) return null
@@ -288,8 +296,8 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
 
           <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45] flex-shrink-0">
             <button onClick={() => setStep('select')} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Go Back</button>
-            <button onClick={handleConfirmAll} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">
-              Confirm All ({confirmData.length})
+            <button onClick={handleConfirmAll} disabled={confirmingAll} className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+              {confirmingAll ? 'Saving...' : `Confirm All (${confirmData.length})`}
             </button>
           </div>
         </>)}
@@ -561,6 +569,7 @@ export default function Inventory() {
   const [correctOpen, setCorrectOpen] = useState(false)
   const [editing, setEditing] = useState(null)
   const [historyBook, setHistoryBook] = useState(null)
+  const [downloadingReport, setDownloadingReport] = useState(false)
 
   useEffect(() => { fetchAll() }, [])
   useRealtime('stock', fetchAll)
@@ -681,6 +690,19 @@ export default function Inventory() {
     fetchAll()
   }
 
+  async function handleDownloadReport() {
+    if (downloadingReport) return
+    setDownloadingReport(true)
+    try {
+      const blob = await generateStockReportBlob(stock)
+      downloadStockReport(blob)
+    } catch {
+      toast.error('Failed to generate stock report')
+    } finally {
+      setDownloadingReport(false)
+    }
+  }
+
   async function handleCorrect({ available_qty, low_stock_threshold }) {
     const { error } = await supabase.from('stock').update({ available_qty, low_stock_threshold }).eq('id', editing.id)
     if (error) { toast.error('Failed to save'); return }
@@ -718,11 +740,19 @@ export default function Inventory() {
           <h1 className="text-white text-2xl font-bold">Inventory</h1>
           <p className="text-[#6b7280] text-sm mt-0.5">{tab === 'stock' ? `${stock.length} books tracked` : `${movements.length} movements`}</p>
         </div>
-        {tab === 'stock' && canEdit && (
-          <button onClick={() => { setPreBook(null); setAddBatchOpen(true) }}
-            className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
-            <Plus size={16} /> Add Stock
-          </button>
+        {tab === 'stock' && (
+          <div className="flex items-center gap-2">
+            <button onClick={handleDownloadReport} disabled={downloadingReport || loading}
+              className="flex items-center gap-2 bg-[#1a1a2e] border border-[#2a2a45] hover:border-[#3a3a55] text-[#9ca3af] hover:text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all disabled:opacity-50">
+              <Download size={16} /> {downloadingReport ? 'Generating…' : 'Download PDF'}
+            </button>
+            {canEdit && (
+              <button onClick={() => { setPreBook(null); setAddBatchOpen(true) }}
+                className="flex items-center gap-2 bg-[#bd0a0a] hover:bg-[#a00909] text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-all">
+                <Plus size={16} /> Add Stock
+              </button>
+            )}
+          </div>
         )}
       </div>
 
