@@ -471,9 +471,11 @@ export default function Dashboard() {
     const totalSalesMrp = parseFloat(totalSalesMrpData) || 0
     const totalAllotmentsMrp = parseFloat(totalAllotmentsMrpData) || 0
     const totalDistributed = totalIssuedBooks + totalSalesQty + totalAllotmentsQty
+    const totalInventory = (stockData || []).reduce((sum, s) => sum + (s.available_qty || 0), 0)
     setStats({
       totalStudents, totalBooks, issuedToday, salesToday, newStudentsToday, bagsIssued,
       totalIssuedBooks, totalSalesQty, totalAllotmentsQty, totalSalesMrp, totalAllotmentsMrp, totalDistributed,
+      totalInventory,
       websiteOrdersTotal, websiteOrdersNew, websiteOrdersShipped, websiteOrdersDelivered,
     })
     setRecentIssuances(recentData || [])
@@ -494,9 +496,19 @@ export default function Dashboard() {
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-6 animate-pulse h-48" />
       ) : (
         <div className="bg-gradient-to-br from-[#1a1a2e] to-[#221530] border border-[#bd0a0a]/30 rounded-xl p-6">
-          <div className="flex items-center gap-2">
-            <Package size={18} className="text-[#bd0a0a]" />
-            <h2 className="text-white font-semibold text-sm">Total Books Distributed</h2>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Package size={18} className="text-[#bd0a0a]" />
+              <h2 className="text-white font-semibold text-sm">Total Books Distributed</h2>
+            </div>
+            <Link
+              to="/admin/inventory"
+              className="flex items-center gap-1.5 bg-[#12121f] border border-[#2a2a45] hover:border-[#3a3a55] rounded-full pl-2.5 pr-1.5 py-1 text-xs active:opacity-70 transition-opacity touch-manipulation"
+            >
+              <span className="text-[#6b7280]">In Inventory</span>
+              <span className="text-white font-semibold">{stats.totalInventory ?? '—'}</span>
+              <span className="bg-[#2a2a45] text-[#9ca3af] rounded-full px-1.5 py-0.5 text-[10px]">View</span>
+            </Link>
           </div>
           <p className="text-[#6b7280] text-xs mt-0.5">All time · sales + distributor allotments + student issuances, deducted from stock</p>
           <p className="text-white text-4xl sm:text-5xl font-bold mt-3">{stats.totalDistributed ?? '—'}</p>
