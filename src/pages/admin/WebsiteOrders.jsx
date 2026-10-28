@@ -11,6 +11,46 @@ function safeFormat(dateStr, fmt) {
   return isNaN(d.getTime()) ? '—' : format(d, fmt)
 }
 
+const MEDIUM_LABEL = { hindi: 'Hindi', english: 'English', both: 'Both' }
+
+function normalizeTitle(line) {
+  return line
+    .replace(/[x×]\s*\d+\s*$/i, '')
+    .replace(/[-–]?\s*qty\s*:?\s*\d+\s*$/i, '')
+    .trim()
+    .toLowerCase()
+}
+
+function buildBookMediumMap(books) {
+  const map = new Map()
+  for (const b of books) {
+    if (!b.title) continue
+    const key = b.title.trim().toLowerCase()
+    if (!map.has(key)) map.set(key, new Set())
+    map.get(key).add(b.medium)
+  }
+  return map
+}
+
+function bookLanguage(line, bookMediumMap) {
+  const mediums = bookMediumMap?.get(normalizeTitle(line))
+  if (mediums && mediums.size === 1) {
+    return MEDIUM_LABEL[[...mediums][0]] || null
+  }
+  // No unique match in the books table (new/renamed title, or same title used
+  // for both mediums) — fall back to script detection on the line itself.
+  return /[ऀ-ॿ]/.test(line) ? 'Hindi' : 'English'
+}
+
+function LanguageBadge({ lang }) {
+  const cls = lang === 'Hindi'
+    ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30'
+    : lang === 'Both'
+    ? 'bg-teal-500/20 text-teal-400 border-teal-500/30'
+    : 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30'
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium flex-shrink-0 ${cls}`}>{lang}</span>
+}
+
 function fulfillmentStage(o) {
   if (o.delivered) return 2
   if (o.shipped) return 1
@@ -49,7 +89,7 @@ function Field({ label, value }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, readOnly }) {
+function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, readOnly, bookMediumMap }) {
   const [awbInput, setAwbInput] = useState('')
   const [showAwbInput, setShowAwbInput] = useState(false)
 
@@ -144,9 +184,12 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
 
           {order.books_ordered && (
             <Section icon={Package} label="Books Ordered">
-              <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-3 space-y-1">
+              <div className="bg-[#12121f] border border-[#2a2a45] rounded-lg p-3 space-y-1.5">
                 {order.books_ordered.split('\n').filter(Boolean).map((line, i) => (
-                  <p key={i} className="text-[#9ca3af] text-xs leading-relaxed">{line}</p>
+                  <div key={i} className="flex items-start justify-between gap-2">
+                    <p className="text-[#9ca3af] text-xs leading-relaxed">{line}</p>
+                    <LanguageBadge lang={bookLanguage(line, bookMediumMap)} />
+                  </div>
                 ))}
               </div>
             </Section>
@@ -197,6 +240,7 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
 export default function WebsiteOrders() {
   const { isViewAdmin } = useAuthStore()
   const [orders, setOrders] = useState([])
+  const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedOrder, setSelectedOrder] = useState(null)
@@ -217,7 +261,14 @@ export default function WebsiteOrders() {
     setLoading(false)
   }
 
-  useEffect(() => { fetchOrders() }, [])
+  async function fetchBooks() {
+    const { data } = await supabase.from('books').select('title, medium')
+    setBooks(data || [])
+  }
+
+  useEffect(() => { fetchOrders(); fetchBooks() }, [])
+
+  const bookMediumMap = useMemo(() => buildBookMediumMap(books), [books])
 
   function applyUpdate(orderId, patch) {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...patch } : o))
@@ -356,7 +407,13 @@ export default function WebsiteOrders() {
                     <p className="text-white font-semibold text-sm truncate">{o.buyer_name || 'Unknown'}</p>
                     <span className="text-[#4b5563] text-xs flex-shrink-0">#{o.cs_order_id}</span>
                   </div>
-                  <p className="text-[#9ca3af] text-xs mt-1 truncate">{o.product_name}</p>
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <p className="text-[#9ca3af] text-xs truncate">{o.product_name}</p>
+                    {o.books_ordered && (() => {
+                      const langs = new Set(o.books_ordered.split('\n').filter(Boolean).map(line => bookLanguage(line, bookMediumMap)))
+                      return [...langs].map(lang => <LanguageBadge key={lang} lang={lang} />)
+                    })()}
+                  </div>
                   <div className="flex items-center gap-3 mt-1 flex-wrap">
                     {o.phone && <span className="text-[#6b7280] text-xs flex items-center gap-1"><Phone size={10} />{o.phone}</span>}
                     <span className="text-[#4b5563] text-xs">{safeFormat(o.order_date, 'dd MMM yy, hh:mm a')}</span>
@@ -389,6 +446,7 @@ export default function WebsiteOrders() {
         onUnship={handleUnship}
         onDeliver={handleDeliver}
         onDeleteRequest={(order) => setDeleteConfirm(order)}
+        bookMediumMap={bookMediumMap}
         readOnly={isViewAdmin}
       />
 
