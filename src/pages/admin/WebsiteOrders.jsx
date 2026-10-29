@@ -33,6 +33,14 @@ function buildBookMediumMap(books) {
 }
 
 function bookLanguage(line, bookMediumMap) {
+  // The order line itself often carries an explicit "(Hindi)" / "(English)" /
+  // "(Both)" suffix recorded at checkout — trust that first, since it's more
+  // reliable than guessing (a line like "... (Hindi)" is plain-script English
+  // text describing a Hindi book, which would otherwise fool script detection).
+  const suffixMatch = line.match(/\((Hindi|English|Both)\)\s*$/i)
+  if (suffixMatch) {
+    return MEDIUM_LABEL[suffixMatch[1].toLowerCase()] || null
+  }
   const mediums = bookMediumMap?.get(normalizeTitle(line))
   if (mediums && mediums.size === 1) {
     return MEDIUM_LABEL[[...mediums][0]] || null
