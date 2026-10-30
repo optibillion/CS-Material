@@ -39,13 +39,36 @@ export async function uploadStudentPhoto(file, studentId) {
 }
 
 export async function adjustStock(bookId, delta) {
-  const { data } = await supabase
+  if (delta > 0) {
+    // crediting stock back (e.g. un-issuing, a return) — the most recently
+    // created entry for this book is as good a place as any to receive it
+    const { data } = await supabase
+      .from('stock')
+      .select('id, available_qty')
+      .eq('book_id', bookId)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!data) return
+    await supabase.from('stock').update({ available_qty: data.available_qty + delta }).eq('id', data.id)
+    return
+  }
+
+  // deducting — a book can be tracked across more than one stock row (by
+  // location/batch), so draw down whichever rows actually have copies
+  // instead of only ever touching the single most-recent row. Matches the
+  // targeting already used for sales and distributor allotments.
+  let remaining = -delta
+  const { data: entries } = await supabase
     .from('stock')
     .select('id, available_qty')
     .eq('book_id', bookId)
-    .order('id', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (!data) return
-  await supabase.from('stock').update({ available_qty: Math.max(0, data.available_qty + delta) }).eq('id', data.id)
+    .gt('available_qty', 0)
+    .order('available_qty', { ascending: false })
+  for (const entry of entries || []) {
+    if (remaining <= 0) break
+    const deduct = Math.min(remaining, entry.available_qty)
+    await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
+    remaining -= deduct
+  }
 }
