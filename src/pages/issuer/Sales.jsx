@@ -6,6 +6,7 @@ import { format } from 'date-fns'
 import { Check, ShoppingCart, Package, Search, RotateCcw, Receipt } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 import ReceiptModal from '../../components/ReceiptModal'
+import { effectiveMrp } from '../../lib/pricing'
 
 export default function IssuerSales() {
   const { profile } = useAuthStore()
@@ -15,6 +16,7 @@ export default function IssuerSales() {
   const [bundles, setBundles] = useState([])
   const [stockMap, setStockMap] = useState({})
   const [stockEntries, setStockEntries] = useState([])
+  const [priceHistory, setPriceHistory] = useState([])
   const [sales, setSales] = useState([])
   const [loading, setLoading] = useState(true)
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -77,15 +79,17 @@ export default function IssuerSales() {
 
   async function fetchData() {
     setLoading(true)
-    const [{ data: booksData }, { data: bundlesData }, { data: stockData }, salesData] = await Promise.all([
+    const [{ data: booksData }, { data: bundlesData }, { data: stockData }, salesData, { data: historyData }] = await Promise.all([
       supabase.from('books').select('*').eq('is_active', true).order('title'),
       supabase.from('bundles').select('*, bundle_books(book_id)').eq('is_active', true),
       supabase.from('stock').select('id, book_id, available_qty, location'),
-      fetchAllSales()
+      fetchAllSales(),
+      supabase.from('book_price_history').select('*'),
     ])
     setBooks(booksData || [])
     setBundles(bundlesData || [])
     setStockEntries(stockData || [])
+    setPriceHistory(historyData || [])
     const map = {}
     for (const s of (stockData || [])) {
       map[s.book_id] = (map[s.book_id] || 0) + (s.available_qty || 0)
@@ -144,7 +148,8 @@ export default function IssuerSales() {
       sold_at: now,
       payment_mode: paymentMode,
       is_returned: false,
-      remark: i === 0 ? (remark.trim() || null) : null
+      remark: i === 0 ? (remark.trim() || null) : null,
+      unit_mrp: effectiveMrp(priceHistory, b.id, new Date(now)),
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
     if (error) { toast.error('Failed to record sale'); setSubmitting(false); return }

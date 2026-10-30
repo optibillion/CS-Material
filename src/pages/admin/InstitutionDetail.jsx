@@ -8,6 +8,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 import { generateAllotmentSlipBlob, downloadAllotmentSlip, saveSlipFile, generateGrandTotalBillBlob, downloadGrandTotalBill, saveGrandBillFile, generateReversalSlipBlob, downloadReversalSlip, saveReversalSlipFile } from '../../lib/receipt'
+import { effectiveMrp } from '../../lib/pricing'
 
 function WhatsAppIcon() {
   return (
@@ -362,17 +363,19 @@ export default function InstitutionDetail() {
   const [discountPct, setDiscountPct] = useState(0)
   const [issueDate, setIssueDate] = useState(today)
   const [submitting, setSubmitting] = useState(false)
+  const [priceHistory, setPriceHistory] = useState([])
 
   useEffect(() => { fetchAll() }, [id])
   useRealtime('stock', fetchAll)
 
   async function fetchAll() {
     setLoading(true)
-    const [{ data: inst }, { data: alts }, { data: bks, error: bksErr }, { data: stk }] = await Promise.all([
+    const [{ data: inst }, { data: alts }, { data: bks, error: bksErr }, { data: stk }, { data: hist }] = await Promise.all([
       supabase.from('institutions').select('*').eq('id', id).single(),
       supabase.from('allotments').select('*, books(title, exam_level, unit, part, category, medium, mrp), users(name)').eq('institution_id', id).order('allotted_at', { ascending: false }),
       supabase.from('books').select('*').eq('is_active', true).order('exam_level').order('unit').order('part'),
       supabase.from('stock').select('id, book_id, available_qty').order('id', { ascending: false }),
+      supabase.from('book_price_history').select('*'),
     ])
     if (!inst) { toast.error('Distributor not found'); navigate(`${basePath}/allotments`); return }
     if (bksErr) toast.error('Could not load books — check Supabase RLS for accountant role')
@@ -380,6 +383,7 @@ export default function InstitutionDetail() {
     setAllotments(alts || [])
     setBooks(bks || [])
     setStockEntries(stk || [])
+    setPriceHistory(hist || [])
     setLoading(false)
   }
 
@@ -706,9 +710,10 @@ export default function InstitutionDetail() {
     const isReversal = changeBookModal.is_reversal
     const qty = Math.abs(changeBookModal.qty)
 
-    // for a reversal row, price it the way the original batch priced the new
-    // title — never today's MRP, so the refund figure stays honest
-    let newUnitMrp = newBook.mrp || null
+    // price it the way the batch's own date would have priced the new title —
+    // never today's live MRP, so changing a book on an old batch doesn't quietly
+    // reprice it at whatever the MRP happens to be today
+    let newUnitMrp = effectiveMrp(priceHistory, changeBookTarget, new Date(changeBookModal.batchAt))
     if (isReversal) {
       const originalBatch = batches.find(b => !b.is_reversal && b.allotted_at === oldBook.reversed_batch_at)
       const originalRow = originalBatch?.books.find(b => b.book_id === changeBookTarget)
@@ -793,7 +798,7 @@ export default function InstitutionDetail() {
       type: 'external',
       institution_name: institution.name,
       discount_pct: discountPct || 0,
-      unit_mrp: b.mrp || null,
+      unit_mrp: effectiveMrp(priceHistory, b.id, new Date(issuedAt)),
       stock_deducted: true,
     }))
     const { error } = await supabase.from('allotments').insert(rows)
@@ -833,7 +838,7 @@ export default function InstitutionDetail() {
         part: b.part,
         medium: b.medium,
         qty: parseInt(qtyMap[b.id]),
-        unit_mrp: b.mrp || null,
+        unit_mrp: effectiveMrp(priceHistory, b.id, new Date(issuedAt)),
       })),
       discount_pct: discountPct || 0,
       allotted_at: issuedAt,
@@ -1525,11 +1530,11 @@ export default function InstitutionDetail() {
                 </div>
               )}
 
-              {selectedBooks.length > 0 && selectedBooks.some(b => b.mrp) && (
+              {selectedBooks.length > 0 && selectedBooks.some(b => effectiveMrp(priceHistory, b.id, new Date(issueDate + 'T12:00:00'))) && (
                 <div className="bg-[#12121f] rounded-lg px-3 py-2 flex items-center justify-between">
                   <span className="text-[#6b7280] text-xs">Value to distributor</span>
                   <span className="text-[#f0a500] text-sm font-bold">
-                    ₹{Math.round(selectedBooks.reduce((s, b) => s + (b.mrp || 0) * (1 - discountPct / 100) * parseInt(qtyMap[b.id] || 0), 0))}
+                    ₹{Math.round(selectedBooks.reduce((s, b) => s + (effectiveMrp(priceHistory, b.id, new Date(issueDate + 'T12:00:00')) || 0) * (1 - discountPct / 100) * parseInt(qtyMap[b.id] || 0), 0))}
                   </span>
                 </div>
               )}

@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 import ReceiptModal from '../../components/ReceiptModal'
+import { effectiveMrp } from '../../lib/pricing'
 
 export default function Sales() {
   const { profile, isViewAdmin } = useAuthStore()
@@ -19,6 +20,7 @@ export default function Sales() {
   const [bundles, setBundles] = useState([])
   const [stockMap, setStockMap] = useState({})
   const [stockEntries, setStockEntries] = useState([])
+  const [priceHistory, setPriceHistory] = useState([])
   const [buyerName, setBuyerName] = useState('')
   const [buyerPhone, setBuyerPhone] = useState('')
   const [saleMedium, setSaleMedium] = useState('')
@@ -105,14 +107,16 @@ export default function Sales() {
   }
 
   async function openRecordSale() {
-    const [{ data: booksData }, { data: bundlesData }, { data: stockData }] = await Promise.all([
+    const [{ data: booksData }, { data: bundlesData }, { data: stockData }, { data: historyData }] = await Promise.all([
       supabase.from('books').select('*').eq('is_active', true).order('title'),
       supabase.from('bundles').select('*, bundle_books(book_id)').eq('is_active', true),
-      supabase.from('stock').select('id, book_id, available_qty, location')
+      supabase.from('stock').select('id, book_id, available_qty, location'),
+      supabase.from('book_price_history').select('*'),
     ])
     setBooks(booksData || [])
     setBundles(bundlesData || [])
     setStockEntries(stockData || [])
+    setPriceHistory(historyData || [])
     const map = {}
     for (const s of (stockData || [])) map[s.book_id] = (map[s.book_id] || 0) + (s.available_qty || 0)
     setStockMap(map)
@@ -161,6 +165,7 @@ export default function Sales() {
       total_price: i === 0 ? (parseFloat(finalPrice) || null) : null,
       sold_by: profile?.id, sold_at: now, is_returned: false,
       payment_mode: paymentMode,
+      unit_mrp: effectiveMrp(priceHistory, b.id, new Date(now)),
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
     if (error) { toast.error('Failed to record sale'); setRecording(false); return }

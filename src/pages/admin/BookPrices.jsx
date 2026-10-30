@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Search } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 import { useAuthStore } from '../../store/authStore'
+import { effectivePrice, upcomingPrice } from '../../lib/pricing'
 
 const MEDIUM_COLORS = {
   hindi:   { bg: 'bg-[#bd0a0a]', text: 'text-white', label: 'HINDI' },
@@ -11,40 +13,63 @@ const MEDIUM_COLORS = {
   both:    { bg: 'bg-teal-600',  text: 'text-white', label: 'H + E' },
 }
 
+const today = new Date().toISOString().slice(0, 10)
+
 export default function BookPrices() {
-  const { priceAccess, isAdmin, isAccountant } = useAuthStore()
+  const { priceAccess, isAdmin, isAccountant, profile } = useAuthStore()
   const canEdit = isAdmin || isAccountant || priceAccess === 'edit'
 
   const [books, setBooks] = useState([])
+  const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [mediumFilter, setMediumFilter] = useState('all')
   const [mrpEdits, setMrpEdits] = useState({})
+  const [effFromEdits, setEffFromEdits] = useState({})
   const [savingMrp, setSavingMrp] = useState(null)
 
   useEffect(() => { fetchBooks() }, [])
 
   async function fetchBooks() {
     setLoading(true)
-    const { data } = await supabase
-      .from('books')
-      .select('id, title, exam_level, unit, part, medium, is_active, mrp')
-      .order('exam_level').order('unit').order('part').order('title')
-    setBooks(data || [])
+    const [{ data: booksData }, { data: historyData }] = await Promise.all([
+      supabase.from('books')
+        .select('id, title, exam_level, unit, part, medium, is_active')
+        .order('exam_level').order('unit').order('part').order('title'),
+      supabase.from('book_price_history').select('*').order('effective_from', { ascending: true }),
+    ])
+    setBooks(booksData || [])
+    setHistory(historyData || [])
     setLoading(false)
   }
 
-  async function handleSave(bookId, bookTitle, value) {
+  async function handleSave(bookId, bookTitle, value, effFromStr) {
     const trimmed = String(value).trim()
-    const parsed = trimmed === '' ? null : parseFloat(trimmed)
-    if (trimmed !== '' && (isNaN(parsed) || parsed < 0)) { toast.error('Enter a valid price'); return }
+    if (trimmed === '') { toast.error('Enter a price'); return }
+    const parsed = parseFloat(trimmed)
+    if (isNaN(parsed) || parsed < 0) { toast.error('Enter a valid price'); return }
+    const effFrom = new Date(`${effFromStr || today}T00:00:00`)
     setSavingMrp(bookId)
-    const { error } = await supabase.from('books').update({ mrp: parsed }).eq('id', bookId)
+    const { error } = await supabase.from('book_price_history').insert({
+      book_id: bookId, mrp: parsed, effective_from: effFrom.toISOString(), created_by: profile?.id,
+    })
     if (error) { toast.error('Failed to save'); setSavingMrp(null); return }
-    toast.success(parsed != null ? `MRP updated to ₹${parsed}` : 'MRP cleared')
-    logAction('BOOK_UPDATED', `${bookTitle} — MRP set to ${parsed != null ? '₹' + parsed : 'none'}`)
+    const isFuture = effFrom > new Date()
+    toast.success(isFuture
+      ? `₹${parsed} scheduled for ${bookTitle} from ${format(effFrom, 'dd MMM yyyy')}`
+      : `MRP updated to ₹${parsed}`)
+    logAction('BOOK_UPDATED', `${bookTitle} — MRP set to ₹${parsed} effective ${format(effFrom, 'dd MMM yyyy')}`)
     setMrpEdits(e => { const n = { ...e }; delete n[bookId]; return n })
+    setEffFromEdits(e => { const n = { ...e }; delete n[bookId]; return n })
     setSavingMrp(null)
+    fetchBooks()
+  }
+
+  async function handleCancelUpcoming(row, bookTitle) {
+    const { error } = await supabase.from('book_price_history').delete().eq('id', row.id)
+    if (error) { toast.error('Failed to cancel'); return }
+    toast.success(`Scheduled ₹${row.mrp} price for ${bookTitle} cancelled`)
+    logAction('BOOK_UPDATED', `${bookTitle} — cancelled scheduled MRP ₹${row.mrp} (was to start ${format(new Date(row.effective_from), 'dd MMM yyyy')})`)
     fetchBooks()
   }
 
@@ -60,60 +85,89 @@ export default function BookPrices() {
   const activeBooks = filtered.filter(b => b.is_active)
   const inactiveBooks = filtered.filter(b => !b.is_active)
 
-  const priceSetCount = books.filter(b => b.is_active && b.mrp != null).length
+  const currentPriceOf = (bookId) => effectivePrice(history, bookId)
+  const upcomingPriceOf = (bookId) => upcomingPrice(history, bookId)
+
+  const priceSetCount = books.filter(b => b.is_active && currentPriceOf(b.id) != null).length
   const activeCount = books.filter(b => b.is_active).length
 
   function renderRow(book) {
     const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
+    const current = currentPriceOf(book.id)
+    const upcoming = upcomingPriceOf(book.id)
     const editVal = mrpEdits[book.id]
-    const currentDisplay = editVal !== undefined ? editVal : (book.mrp != null ? String(book.mrp) : '')
-    const isDirty = editVal !== undefined
+    const effFromVal = effFromEdits[book.id] ?? today
+    const currentDisplay = editVal !== undefined ? editVal : ''
+    const isDirty = editVal !== undefined && editVal !== ''
 
     const mc = MEDIUM_COLORS[book.medium] || MEDIUM_COLORS.hindi
 
     return (
-      <div key={book.id} className={`flex items-center gap-3 px-4 py-3 border-b border-[#2a2a45] last:border-0 transition-all ${!book.is_active ? 'opacity-40' : ''}`}>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            {lvl ? (
-              <p className="text-white text-sm font-semibold">{lvl}</p>
-            ) : (
-              <p className="text-white text-sm font-semibold">{book.title}</p>
-            )}
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${mc.bg} ${mc.text} flex-shrink-0`}>
-              {mc.label}
-            </span>
-          </div>
-          {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{book.title}</p>}
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {canEdit ? (
-            <>
-              {book.mrp != null && !isDirty && (
-                <span className="text-[#6b7280] text-xs">₹{book.mrp}</span>
+      <div key={book.id} className={`border-b border-[#2a2a45] last:border-0 transition-all ${!book.is_active ? 'opacity-40' : ''}`}>
+        <div className="flex items-center gap-3 px-4 py-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {lvl ? (
+                <p className="text-white text-sm font-semibold">{lvl}</p>
+              ) : (
+                <p className="text-white text-sm font-semibold">{book.title}</p>
               )}
-              <span className="text-[#6b7280] text-sm">₹</span>
-              <input
-                type="number" min="0" step="0.01"
-                placeholder={book.mrp != null ? String(book.mrp) : '—'}
-                value={currentDisplay}
-                onChange={e => setMrpEdits(m => ({ ...m, [book.id]: e.target.value }))}
-                onKeyDown={e => { if (e.key === 'Enter' && isDirty) handleSave(book.id, book.title, editVal) }}
-                className={`w-24 bg-[#12121f] border rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none transition-all ${isDirty ? 'border-[#f0a500] focus:border-[#f0a500]' : 'border-[#2a2a45] focus:border-[#f0a500]'}`}
-              />
-              <button
-                onClick={() => isDirty && handleSave(book.id, book.title, editVal)}
-                disabled={!isDirty || savingMrp === book.id}
-                className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all w-14 text-center ${isDirty ? 'bg-[#f0a500] hover:bg-[#d4920a] text-black' : 'bg-[#2a2a45] text-[#4b5563] cursor-default'}`}>
-                {savingMrp === book.id ? '…' : isDirty ? 'Save' : 'set'}
-              </button>
-            </>
-          ) : (
-            <span className="text-white text-sm font-medium">
-              {book.mrp != null ? `₹${book.mrp}` : <span className="text-[#4b5563]">—</span>}
-            </span>
-          )}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${mc.bg} ${mc.text} flex-shrink-0`}>
+                {mc.label}
+              </span>
+            </div>
+            {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{book.title}</p>}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {canEdit ? (
+              <>
+                {current != null && !isDirty && (
+                  <span className="text-[#6b7280] text-xs">₹{current.mrp}</span>
+                )}
+                <span className="text-[#6b7280] text-sm">₹</span>
+                <input
+                  type="number" min="0" step="0.01"
+                  placeholder={current != null ? String(current.mrp) : '—'}
+                  value={currentDisplay}
+                  onChange={e => setMrpEdits(m => ({ ...m, [book.id]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter' && isDirty) handleSave(book.id, book.title, editVal, effFromVal) }}
+                  className={`w-20 bg-[#12121f] border rounded-lg px-2 py-1.5 text-white text-sm text-right focus:outline-none transition-all ${isDirty ? 'border-[#f0a500] focus:border-[#f0a500]' : 'border-[#2a2a45] focus:border-[#f0a500]'}`}
+                />
+                {isDirty && (
+                  <input
+                    type="date"
+                    value={effFromVal}
+                    onChange={e => setEffFromEdits(m => ({ ...m, [book.id]: e.target.value }))}
+                    title="Effective from"
+                    className="w-[108px] bg-[#12121f] border border-[#f0a500] rounded-lg px-1.5 py-1.5 text-white text-xs focus:outline-none"
+                  />
+                )}
+                <button
+                  onClick={() => isDirty && handleSave(book.id, book.title, editVal, effFromVal)}
+                  disabled={!isDirty || savingMrp === book.id}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-all w-14 text-center ${isDirty ? 'bg-[#f0a500] hover:bg-[#d4920a] text-black' : 'bg-[#2a2a45] text-[#4b5563] cursor-default'}`}>
+                  {savingMrp === book.id ? '…' : isDirty ? 'Save' : 'set'}
+                </button>
+              </>
+            ) : (
+              <span className="text-white text-sm font-medium">
+                {current != null ? `₹${current.mrp}` : <span className="text-[#4b5563]">—</span>}
+              </span>
+            )}
+          </div>
         </div>
+        {upcoming && (
+          <div className="flex items-center justify-between gap-2 px-4 pb-2.5 -mt-1">
+            <span className="text-[10px] text-teal-400 bg-teal-500/10 border border-teal-500/30 rounded-full px-2 py-0.5">
+              Upcoming: ₹{upcoming.mrp} from {format(new Date(upcoming.effective_from), 'dd MMM yyyy')}
+            </span>
+            {canEdit && (
+              <button onClick={() => handleCancelUpcoming(upcoming, book.title)} className="text-[10px] text-[#6b7280] hover:text-[#bd0a0a] underline">
+                cancel
+              </button>
+            )}
+          </div>
+        )}
       </div>
     )
   }
