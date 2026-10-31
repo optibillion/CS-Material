@@ -9,6 +9,7 @@ import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 import { generateAllotmentSlipBlob, downloadAllotmentSlip, saveSlipFile, generateGrandTotalBillBlob, downloadGrandTotalBill, saveGrandBillFile, generateReversalSlipBlob, downloadReversalSlip, saveReversalSlipFile } from '../../lib/receipt'
 import { effectiveMrp } from '../../lib/pricing'
+import MediumBadge, { mediumRowClass } from '../../components/MediumBadge'
 
 function WhatsAppIcon() {
   return (
@@ -1206,7 +1207,10 @@ export default function InstitutionDetail() {
                   <p className="text-[#6b7280] text-[10px] uppercase tracking-wide mb-0.5">{cb.is_reversal ? 'Currently recorded as returned' : 'Current'}</p>
                   <p className="text-white text-xs font-semibold">{[cb.currentBook.exam_level, cb.currentBook.unit, cb.currentBook.part].filter(Boolean).join(' › ')}</p>
                   <p className="text-[#9ca3af] text-[11px] truncate">{cb.currentBook.title}</p>
-                  <p className="text-orange-400 text-[10px] mt-0.5 capitalize">{cb.currentBook.medium} · ×{Math.abs(cb.qty)}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <MediumBadge medium={cb.currentBook.medium} size="sm" />
+                    <span className="text-[#6b7280] text-[10px]">×{Math.abs(cb.qty)}</span>
+                  </div>
                 </div>
                 <div className="relative">
                   <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6b7280]" />
@@ -1229,10 +1233,12 @@ export default function InstitutionDetail() {
                   const selected = changeBookTarget === b.id
                   return (
                     <button key={b.id} onClick={() => setChangeBookTarget(b.id)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${selected ? 'bg-blue-500/10 border-blue-500/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
-                      <p className={`text-xs font-semibold ${selected ? 'text-blue-300' : 'text-white'}`}>{lvl}</p>
+                      className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${mediumRowClass(b.medium)} ${selected ? 'bg-blue-500/10 border-blue-500/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <MediumBadge medium={b.medium} size="sm" />
+                        <p className={`text-xs font-semibold ${selected ? 'text-blue-300' : 'text-white'}`}>{lvl}</p>
+                      </div>
                       <p className="text-[#6b7280] text-[11px] truncate mt-0.5">{b.title}</p>
-                      <p className={`text-[10px] mt-0.5 capitalize ${b.medium === 'english' ? 'text-blue-400' : b.medium === 'hindi' ? 'text-orange-400' : 'text-purple-400'}`}>{b.medium}</p>
                     </button>
                   )
                 })}
@@ -1313,12 +1319,10 @@ export default function InstitutionDetail() {
                     const lvl = [info.exam_level, info.unit, info.part].filter(Boolean).join(' › ')
                     const qty = parseInt(takeBackQtyMap[bookId] || 0)
                     return (
-                      <div key={bookId} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${qty > 0 ? 'bg-red-500/10 border-red-500/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
+                      <div key={bookId} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${mediumRowClass(info.medium)} ${qty > 0 ? 'bg-red-500/10 border-red-500/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {info.medium === 'hindi' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30 font-semibold flex-shrink-0">Hindi</span>}
-                            {info.medium === 'english' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-500/20 text-blue-400 border-blue-500/30 font-semibold flex-shrink-0">English</span>}
-                            {info.medium === 'both' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 font-semibold flex-shrink-0">Both</span>}
+                            <MediumBadge medium={info.medium} size="md" />
                             {lvl ? <p className="text-white text-sm font-semibold">{lvl}</p> : <p className="text-white text-sm">{info.title}</p>}
                           </div>
                           {lvl && <p className="text-[#6b7280] text-xs truncate mt-0.5">{info.title}</p>}
@@ -1349,7 +1353,10 @@ export default function InstitutionDetail() {
                       const lvl = [info.exam_level, info.unit, info.part].filter(Boolean).join(' › ')
                       return (
                         <div key={bookId} className="flex items-center justify-between gap-2">
-                          <p className="text-[#9ca3af] text-xs truncate">{lvl || info.title}</p>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <MediumBadge medium={info.medium} size="sm" />
+                            <p className="text-[#9ca3af] text-xs truncate">{lvl || info.title}</p>
+                          </div>
                           <span className="text-white text-xs font-semibold flex-shrink-0">×{takeBackQtyMap[bookId]}</span>
                         </div>
                       )
@@ -1478,12 +1485,10 @@ export default function InstitutionDetail() {
                   const qty = parseInt(qtyMap[b.id] || 0)
                   const overStock = avail !== null && qty > avail
                   return (
-                    <div key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${qty > 0 ? 'bg-[#bd0a0a]/10 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
+                    <div key={b.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all ${mediumRowClass(b.medium)} ${qty > 0 ? 'bg-[#bd0a0a]/10 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45]'}`}>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {b.medium === 'hindi' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-orange-500/20 text-orange-400 border-orange-500/30 font-semibold flex-shrink-0">Hindi</span>}
-                          {b.medium === 'english' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-blue-500/20 text-blue-400 border-blue-500/30 font-semibold flex-shrink-0">English</span>}
-                          {b.medium === 'both' && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-purple-500/20 text-purple-400 border-purple-500/30 font-semibold flex-shrink-0">Both</span>}
+                          <MediumBadge medium={b.medium} size="lg" />
                           {lvl ? (
                             <p className="text-white text-sm font-semibold">{lvl}</p>
                           ) : (
@@ -1524,7 +1529,10 @@ export default function InstitutionDetail() {
                     const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
                     return (
                       <div key={b.id} className="flex items-center justify-between gap-2">
-                        <p className="text-[#9ca3af] text-xs truncate">{lvl || b.title}</p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <MediumBadge medium={b.medium} size="sm" />
+                          <p className="text-[#9ca3af] text-xs truncate">{lvl || b.title}</p>
+                        </div>
                         <span className="text-white text-xs font-semibold flex-shrink-0">×{qtyMap[b.id]}</span>
                       </div>
                     )

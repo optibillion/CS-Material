@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import { logAction } from '../../lib/audit'
 import ReceiptModal from '../../components/ReceiptModal'
 import { effectiveMrp } from '../../lib/pricing'
+import MediumBadge from '../../components/MediumBadge'
 
 export default function Sales() {
   const { profile, isViewAdmin } = useAuthStore()
@@ -523,7 +524,10 @@ export default function Sales() {
                             <label className={`flex items-center gap-3 px-3 py-3 rounded-lg border transition-all cursor-pointer ${sel ? 'bg-[#bd0a0a]/20 border-[#bd0a0a]/40' : 'bg-[#12121f] border-[#2a2a45] hover:border-[#3a3a55]'}`}>
                               <input type="checkbox" checked={!!sel} onChange={() => toggleBook(b.id)} className="accent-[#bd0a0a] w-4 h-4 flex-shrink-0" />
                               <div className="flex-1 min-w-0">
-                                {b.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide mb-0.5">{b.exam_level}</span>}
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <MediumBadge medium={b.medium} size="sm" />
+                                  {b.exam_level && <span className="inline-block text-[10px] px-1.5 py-0.5 rounded bg-[#bd0a0a]/20 text-[#bd0a0a] font-bold uppercase tracking-wide">{b.exam_level}</span>}
+                                </div>
                                 <p className="text-white text-sm font-bold leading-snug">{[b.unit, b.part].filter(Boolean).join(' · ') || b.title}</p>
                                 {(b.unit || b.part) && <p className="text-[#4b5563] text-[11px] truncate">{b.title}</p>}
                               </div>

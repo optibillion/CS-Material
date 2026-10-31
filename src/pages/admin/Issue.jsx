@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/authStore'
 import { Search, Package, Check, UserPlus, Printer, ShoppingBag, Languages, History } from 'lucide-react'
 import { logAction } from '../../lib/audit'
 import toast from 'react-hot-toast'
+import MediumBadge from '../../components/MediumBadge'
 
 function SelectMediumModal({ open, student, onSave }) {
   const [medium, setMedium] = useState('')
@@ -574,7 +575,10 @@ export default function AdminIssue() {
                             ) : (
                               <p className="text-white text-sm">{b.title}</p>
                             )}
-                            <p className="text-[#6b7280] text-xs mt-0.5">{b.category?.replace('_',' ')} · {b.medium}</p>
+                            <div className="flex items-center gap-1.5 mt-0.5">
+                              <MediumBadge medium={b.medium} size="sm" />
+                              <p className="text-[#6b7280] text-xs">{b.category?.replace('_',' ')}</p>
+                            </div>
                           </div>
                           {isIssued ? <span className="text-xs text-[#6b7280] flex-shrink-0">Issued</span>
                             : isSelectedRegular && issuanceMode === 'previous' ? <span className="text-xs text-[#bd0a0a] flex-shrink-0 font-medium">In Issue</span>
