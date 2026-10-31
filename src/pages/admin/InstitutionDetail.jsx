@@ -789,10 +789,31 @@ export default function InstitutionDetail() {
     if (selectedBooks.length === 0) { toast.error('Select at least one book with quantity'); return }
     setSubmitting(true)
     const issuedAt = new Date(issueDate + 'T12:00:00').toISOString()
-    const rows = selectedBooks.map(b => ({
+
+    // Cap what's actually recorded/deducted at what's physically on hand —
+    // inserting the full requested qty regardless of available stock let the
+    // allotments ledger silently overstate what was dispatched whenever a
+    // distributor was given more than was in stock, permanently inflating
+    // "available" relative to what the movement history implies.
+    const shortages = []
+    const dispatchQty = {}
+    for (const b of selectedBooks) {
+      const requested = parseInt(qtyMap[b.id])
+      const totalAvailable = stockEntries
+        .filter(e => e.book_id === b.id)
+        .reduce((s, e) => s + (e.available_qty || 0), 0)
+      const dispatchable = Math.min(requested, totalAvailable)
+      dispatchQty[b.id] = dispatchable
+      if (dispatchable < requested) shortages.push({ title: b.title, requested, dispatchable })
+    }
+
+    const dispatchedBooks = selectedBooks.filter(b => dispatchQty[b.id] > 0)
+    if (dispatchedBooks.length === 0) { toast.error('No stock available for the selected books'); setSubmitting(false); return }
+
+    const rows = dispatchedBooks.map(b => ({
       institution_id: id,
       book_id: b.id,
-      qty: parseInt(qtyMap[b.id]),
+      qty: dispatchQty[b.id],
       allotted_by: profile?.id,
       allotted_at: issuedAt,
       type: 'external',
@@ -804,8 +825,8 @@ export default function InstitutionDetail() {
     const { error } = await supabase.from('allotments').insert(rows)
     if (error) { toast.error('Failed to record allotment'); setSubmitting(false); return }
 
-    for (const b of selectedBooks) {
-      let remaining = parseInt(qtyMap[b.id])
+    for (const b of dispatchedBooks) {
+      let remaining = dispatchQty[b.id]
       const entries = stockEntries
         .filter(e => e.book_id === b.id && (e.available_qty || 0) > 0)
         .sort((a, z) => z.available_qty - a.available_qty)
@@ -815,15 +836,21 @@ export default function InstitutionDetail() {
         await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
         remaining -= deduct
       }
-      if (remaining > 0) toast.error(`Warning: insufficient stock for some books`)
     }
 
-    const bookList = selectedBooks.map(b => {
+    if (shortages.length > 0) {
+      toast.error(
+        `Short on stock — allotted less than requested: ${shortages.map(s => `${s.title} (${s.dispatchable}/${s.requested})`).join(', ')}`,
+        { duration: 8000 }
+      )
+    }
+
+    const bookList = dispatchedBooks.map(b => {
       const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-      return `${b.title}${lvl ? ` (${lvl})` : ''} ×${qtyMap[b.id]}`
+      return `${b.title}${lvl ? ` (${lvl})` : ''} ×${dispatchQty[b.id]}`
     }).join(', ')
-    logAction('ALLOTMENT_CREATED', `${institution.name} — ${selectedBooks.length} book(s): ${bookList} [stock deducted]${discountPct > 0 ? ` [${discountPct}% discount]` : ''}`)
-    toast.success(`${selectedBooks.length} book(s) allotted to ${institution.name}`)
+    logAction('ALLOTMENT_CREATED', `${institution.name} — ${dispatchedBooks.length} book(s): ${bookList} [stock deducted]${discountPct > 0 ? ` [${discountPct}% discount]` : ''}${shortages.length > 0 ? ' [SHORT ON STOCK]' : ''}`)
+    toast.success(`${dispatchedBooks.length} book(s) allotted to ${institution.name}`)
     setSubmitting(false)
     setIssueOpen(false)
 
@@ -831,13 +858,13 @@ export default function InstitutionDetail() {
       distributor_name: institution.name,
       distributor_location: institution.location,
       distributor_phone: institution.phone,
-      books: selectedBooks.map(b => ({
+      books: dispatchedBooks.map(b => ({
         title: b.title,
         exam_level: b.exam_level,
         unit: b.unit,
         part: b.part,
         medium: b.medium,
-        qty: parseInt(qtyMap[b.id]),
+        qty: dispatchQty[b.id],
         unit_mrp: effectiveMrp(priceHistory, b.id, new Date(issuedAt)),
       })),
       discount_pct: discountPct || 0,
