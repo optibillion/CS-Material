@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase, adjustStock } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { Search, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -48,11 +48,19 @@ export default function Issuances() {
   }
 
   async function handleReversal(reason) {
-    const { error } = await supabase.from('issuances').update({
+    const { data, error } = await supabase.from('issuances').update({
       is_reversed: true, reversed_by: profile?.id,
       reversed_at: new Date().toISOString(), reversal_reason: reason
-    }).eq('id', reversing.id)
+    }).eq('id', reversing.id).eq('is_reversed', false).select('id')
     if (error) { toast.error('Failed to reverse'); return }
+    if (!data || data.length === 0) {
+      toast.error('Already reversed — stock not changed again')
+      setReversing(null); fetchIssuances(); return
+    }
+    // a previous issuance never deducted stock when recorded (it's a
+    // historical note, not a real dispatch) — only credit stock back for
+    // a regular issuance that actually took a copy out
+    if (!reversing.is_previous_issuance) await adjustStock(reversing.book_id, 1)
     toast.success('Issuance reversed')
     setReversing(null); fetchIssuances()
   }

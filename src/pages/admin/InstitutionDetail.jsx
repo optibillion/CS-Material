@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, adjustStock } from '../../lib/supabase'
 import { useRealtime } from '../../hooks/useRealtime'
 import { useAuthStore } from '../../store/authStore'
 import { ArrowLeft, Building2, MapPin, Phone, Pencil, BookOpen, Package, FileDown, X, Download, Loader2, RotateCcw, CalendarDays, ArrowLeftRight, Search, Percent, FileText } from 'lucide-react'
@@ -565,10 +565,7 @@ export default function InstitutionDetail() {
     const { error } = await supabase.from('allotments').insert(rows)
     if (error) { toast.error('Failed to record return — has add_allotment_returns.sql been run in Supabase?'); setTakeBackSubmitting(false); return }
 
-    for (const [bookId, delta] of Object.entries(stockDeltaByBook)) {
-      const entry = stockEntries.find(e => e.book_id === bookId)
-      if (entry) await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + delta }).eq('id', entry.id)
-    }
+    await Promise.all(Object.entries(stockDeltaByBook).map(([bookId, delta]) => adjustStock(bookId, delta)))
 
     const bookList = Object.entries(stockDeltaByBook).map(([bookId, qty]) => {
       const info = bookTotals[bookId]
@@ -678,25 +675,22 @@ export default function InstitutionDetail() {
     if (error) { toast.error('Failed to update quantity'); return }
 
     // stock delta: issuance qty increase deducts more stock; reversal qty
-    // increase (more copies returned) adds stock back — opposite directions
+    // increase (more copies returned) adds stock back — opposite directions.
+    // Allowed to go negative, same as every other stock change, instead of
+    // floored at 0 and hiding a shortfall.
     const diffMag = newMag - oldMag
     const stockDelta = batch.is_reversal ? diffMag : -diffMag
-    let stockNote = ''
-    const entry = stockEntries.find(e => e.book_id === editQty.bookId)
-    if (entry) {
-      const newAvail = Math.max(0, (entry.available_qty || 0) + stockDelta)
-      await supabase.from('stock').update({ available_qty: newAvail }).eq('id', entry.id)
-      stockNote = stockDelta > 0 ? ` [stock +${stockDelta}]` : ` [stock ${stockDelta}]`
-    }
+    if (stockDelta !== 0) await adjustStock(editQty.bookId, stockDelta)
 
     const lvl = [book.exam_level, book.unit, book.part].filter(Boolean).join(' › ')
     const label = batch.is_reversal ? 'return qty' : 'qty'
+    const stockNote = stockDelta > 0 ? ` [stock +${stockDelta}]` : stockDelta < 0 ? ` [stock ${stockDelta}]` : ''
     logAction('ALLOTMENT_QTY_EDITED', `${institution.name} — ${lvl || book.title}: ${label} ${oldMag} → ${newMag} (batch: ${format(new Date(editQty.batchAt), 'dd MMM yy')})${stockNote}`)
-    const stockMsg = entry
-      ? stockDelta > 0
-        ? `Qty updated · ${stockDelta} copies added to stock`
-        : `Qty updated · ${Math.abs(stockDelta)} copies deducted from stock`
-      : 'Quantity updated'
+    const stockMsg = stockDelta > 0
+      ? `Qty updated · ${stockDelta} copies added to stock`
+      : stockDelta < 0
+        ? `Qty updated · ${Math.abs(stockDelta)} copies deducted from stock`
+        : 'Quantity updated'
     toast.success(stockMsg)
     setEditQty(null)
     fetchAll()
@@ -730,37 +724,17 @@ export default function InstitutionDetail() {
     if (error) { toast.error('Failed to change book'); setChangingBook(false); return }
 
     // old book's stock adjustment: issuance restores it (it's no longer
-    // deducted); reversal removes it (the return credit no longer applies)
-    const oldEntry = stockEntries.find(e => e.book_id === changeBookModal.bookId)
-    if (oldEntry) {
-      const delta = isReversal ? -qty : qty
-      await supabase.from('stock').update({ available_qty: Math.max(0, (oldEntry.available_qty || 0) + delta) }).eq('id', oldEntry.id)
-    }
+    // deducted); reversal removes it (the return credit no longer applies).
+    // Allowed to go negative — same shortfall-stays-visible rule as every
+    // other stock change, rather than quietly floored at 0.
+    await adjustStock(changeBookModal.bookId, isReversal ? -qty : qty)
 
     if (isReversal) {
       // the new book is what actually came back — credit its stock directly
-      const newEntry = stockEntries.find(e => e.book_id === changeBookTarget)
-      if (newEntry) {
-        await supabase.from('stock').update({ available_qty: (newEntry.available_qty || 0) + qty }).eq('id', newEntry.id)
-      } else {
-        toast(`ℹ️ No stock entry found for new book — stock not adjusted`, { duration: 4000 })
-      }
+      await adjustStock(changeBookTarget, qty)
     } else {
-      // Deduct stock for new book
-      const allNewEntries = stockEntries.filter(e => e.book_id === changeBookTarget)
-      if (allNewEntries.length === 0) {
-        toast(`ℹ️ No stock entry found for new book — stock not adjusted`, { duration: 4000 })
-      } else {
-        let remaining = qty
-        const availableEntries = allNewEntries.filter(e => (e.available_qty || 0) > 0).sort((a, z) => z.available_qty - a.available_qty)
-        for (const entry of availableEntries) {
-          if (remaining <= 0) break
-          const deduct = Math.min(remaining, entry.available_qty)
-          await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-          remaining -= deduct
-        }
-        if (remaining > 0) toast(`ℹ️ Only ${qty - remaining} of ${qty} copies available in stock — deducted what was available`, { duration: 4000 })
-      }
+      // deduct stock for the new book
+      await adjustStock(changeBookTarget, -qty)
     }
 
     const oldLvl = [oldBook.exam_level, oldBook.unit, oldBook.part].filter(Boolean).join(' › ')
@@ -791,30 +765,15 @@ export default function InstitutionDetail() {
     setSubmitting(true)
     const issuedAt = new Date(issueDate + 'T12:00:00').toISOString()
 
-    // Cap what's actually recorded/deducted at what's physically on hand —
-    // inserting the full requested qty regardless of available stock let the
-    // allotments ledger silently overstate what was dispatched whenever a
-    // distributor was given more than was in stock, permanently inflating
-    // "available" relative to what the movement history implies.
-    const shortages = []
-    const dispatchQty = {}
-    for (const b of selectedBooks) {
-      const requested = parseInt(qtyMap[b.id])
-      const totalAvailable = stockEntries
-        .filter(e => e.book_id === b.id)
-        .reduce((s, e) => s + (e.available_qty || 0), 0)
-      const dispatchable = Math.min(requested, totalAvailable)
-      dispatchQty[b.id] = dispatchable
-      if (dispatchable < requested) shortages.push({ title: b.title, requested, dispatchable })
-    }
-
-    const dispatchedBooks = selectedBooks.filter(b => dispatchQty[b.id] > 0)
-    if (dispatchedBooks.length === 0) { toast.error('No stock available for the selected books'); setSubmitting(false); return }
-
-    const rows = dispatchedBooks.map(b => ({
+    // Always record and deduct the full requested qty, even past what's
+    // physically on hand — available_qty is allowed to go negative so a
+    // shortfall is visible as "-N" in Inventory instead of silently
+    // capped/hidden. The next stock-in just adds on top, which pays the
+    // deficit down automatically.
+    const rows = selectedBooks.map(b => ({
       institution_id: id,
       book_id: b.id,
-      qty: dispatchQty[b.id],
+      qty: parseInt(qtyMap[b.id]),
       allotted_by: profile?.id,
       allotted_at: issuedAt,
       type: 'external',
@@ -826,32 +785,14 @@ export default function InstitutionDetail() {
     const { error } = await supabase.from('allotments').insert(rows)
     if (error) { toast.error('Failed to record allotment'); setSubmitting(false); return }
 
-    for (const b of dispatchedBooks) {
-      let remaining = dispatchQty[b.id]
-      const entries = stockEntries
-        .filter(e => e.book_id === b.id && (e.available_qty || 0) > 0)
-        .sort((a, z) => z.available_qty - a.available_qty)
-      for (const entry of entries) {
-        if (remaining <= 0) break
-        const deduct = Math.min(remaining, entry.available_qty)
-        await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-        remaining -= deduct
-      }
-    }
+    await Promise.all(selectedBooks.map(b => adjustStock(b.id, -parseInt(qtyMap[b.id]))))
 
-    if (shortages.length > 0) {
-      toast.error(
-        `Short on stock — allotted less than requested: ${shortages.map(s => `${s.title} (${s.dispatchable}/${s.requested})`).join(', ')}`,
-        { duration: 8000 }
-      )
-    }
-
-    const bookList = dispatchedBooks.map(b => {
+    const bookList = selectedBooks.map(b => {
       const lvl = [b.exam_level, b.unit, b.part].filter(Boolean).join(' › ')
-      return `${b.title}${lvl ? ` (${lvl})` : ''} ×${dispatchQty[b.id]}`
+      return `${b.title}${lvl ? ` (${lvl})` : ''} ×${qtyMap[b.id]}`
     }).join(', ')
-    logAction('ALLOTMENT_CREATED', `${institution.name} — ${dispatchedBooks.length} book(s): ${bookList} [stock deducted]${discountPct > 0 ? ` [${discountPct}% discount]` : ''}${shortages.length > 0 ? ' [SHORT ON STOCK]' : ''}`)
-    toast.success(`${dispatchedBooks.length} book(s) allotted to ${institution.name}`)
+    logAction('ALLOTMENT_CREATED', `${institution.name} — ${selectedBooks.length} book(s): ${bookList} [stock deducted]${discountPct > 0 ? ` [${discountPct}% discount]` : ''}`)
+    toast.success(`${selectedBooks.length} book(s) allotted to ${institution.name}`)
     setSubmitting(false)
     setIssueOpen(false)
 
@@ -859,13 +800,13 @@ export default function InstitutionDetail() {
       distributor_name: institution.name,
       distributor_location: institution.location,
       distributor_phone: institution.phone,
-      books: dispatchedBooks.map(b => ({
+      books: selectedBooks.map(b => ({
         title: b.title,
         exam_level: b.exam_level,
         unit: b.unit,
         part: b.part,
         medium: b.medium,
-        qty: dispatchQty[b.id],
+        qty: parseInt(qtyMap[b.id]),
         unit_mrp: effectiveMrp(priceHistory, b.id, new Date(issuedAt)),
       })),
       discount_pct: discountPct || 0,

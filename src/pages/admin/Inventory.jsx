@@ -637,18 +637,17 @@ export default function Inventory() {
     const bookTitle = books.find(b => b.id === bookId)?.title || 'Book'
 
     if (existingEntry) {
-      // Add to existing stock entry
-      const { error } = await supabase.from('stock').update({
-        total_qty: existingEntry.total_qty + qty,
-        available_qty: existingEntry.available_qty + qty,
-      }).eq('id', existingEntry.id)
-      if (error) { toast.error('Failed to update stock'); return }
+      // Atomic — total_qty and available_qty are bumped inside one locked
+      // transaction server-side, so two near-simultaneous "+Add" actions on
+      // the same book can't overwrite each other's increment
+      const { data: updated, error } = await supabase.rpc('add_stock_batch', { p_book_id: bookId, p_qty: qty }).single()
+      if (error) { toast.error('Failed to update stock — has add_atomic_stock_functions.sql been run in Supabase?'); return }
 
       await supabase.from('stock_additions').insert({
         book_id: bookId, qty, added_by: profile?.id, note
       })
 
-      toast.success(`+${qty} copies added → ${existingEntry.available_qty + qty} available`)
+      toast.success(`+${qty} copies added → ${updated.available_qty} available`)
       logAction('STOCK_ADDED', `${bookTitle} +${qty} copies`)
     } else {
       // First time — create entry then reconcile past records
@@ -666,7 +665,11 @@ export default function Inventory() {
       const issuedQty   = (issuancesData||[]).length
       const allottedQty = (allotmentsData||[]).reduce((s, r) => s + (r.qty||1), 0)
       const totalDeduct = soldQty + issuedQty + allottedQty
-      const finalAvail  = Math.max(0, qty - totalDeduct)
+      // allowed to go negative, same as every other stock change — if this
+      // book already had more sold/issued/allotted against it than the
+      // first stock-in covers, that deficit should stay visible, not be
+      // floored at 0 and hidden
+      const finalAvail  = qty - totalDeduct
 
       if (totalDeduct > 0) {
         await supabase.from('stock').update({ available_qty: finalAvail }).eq('id', newStock.id)
@@ -832,6 +835,7 @@ export default function Inventory() {
                 )) : filtered.length===0 ? (
                   <tr><td colSpan={5} className="text-center text-[#6b7280] py-10 text-sm">No stock entries — click Add Stock to get started</td></tr>
                 ) : filtered.map(s => {
+                  const isNegative = s.available_qty < 0
                   const isLow = s.available_qty <= s.low_stock_threshold
                   return (
                     <tr key={s.id} className="hover:bg-[#12121f] transition-colors cursor-pointer"
@@ -847,17 +851,21 @@ export default function Inventory() {
                         </div>
                       </td>
                       <td className="px-5 py-3">
-                        <span className={`text-sm font-semibold ${s.available_qty===0 ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-white'}`}>{s.available_qty}</span>
+                        <span className={`text-sm font-semibold ${isNegative ? 'text-purple-400' : s.available_qty===0 ? 'text-red-400' : isLow ? 'text-orange-400' : 'text-white'}`}>{s.available_qty}</span>
                         {s.total_qty > 0 && (
                           <div className="w-16 bg-[#2a2a45] rounded-full h-1 mt-1">
-                            <div className={`h-1 rounded-full ${s.available_qty===0 ? 'bg-red-500' : isLow ? 'bg-orange-400' : 'bg-emerald-400'}`}
-                              style={{ width: `${Math.round((s.available_qty/s.total_qty)*100)}%` }} />
+                            <div className={`h-1 rounded-full ${isNegative ? 'bg-purple-500' : s.available_qty===0 ? 'bg-red-500' : isLow ? 'bg-orange-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${Math.max(0, Math.round((s.available_qty/s.total_qty)*100))}%` }} />
                           </div>
                         )}
                       </td>
                       <td className="px-5 py-3 text-[#9ca3af] text-sm">{s.total_qty}</td>
                       <td className="px-5 py-3">
-                        {isLow ? (
+                        {isNegative ? (
+                          <span className="flex items-center gap-1 text-xs text-purple-400 font-medium">
+                            <AlertTriangle size={12} /> Backordered ({-s.available_qty} short)
+                          </span>
+                        ) : isLow ? (
                           <span className="flex items-center gap-1 text-xs text-red-400 font-medium">
                             <AlertTriangle size={12} /> {s.available_qty===0 ? 'Out of stock' : 'Low Stock'}
                           </span>

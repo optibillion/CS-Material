@@ -139,19 +139,28 @@ function EditModal({ open, onClose, onSave, student, batches, isAdmin, allUsers 
 
 function ReversalModal({ open, onClose, onConfirm, issuance }) {
   const [reason, setReason] = useState('')
-  useEffect(() => { if (open) setReason('') }, [open])
+  const [submitting, setSubmitting] = useState(false)
+  useEffect(() => { if (open) { setReason(''); setSubmitting(false) } }, [open])
   if (!open) return null
+  async function handleConfirm() {
+    if (submitting) return
+    if (!reason.trim()) { toast.error('Reason required'); return }
+    setSubmitting(true)
+    await onConfirm(reason)
+  }
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
       <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-md p-6">
         <h2 className="text-white font-semibold text-lg mb-2">Reverse Issuance</h2>
         <p className="text-[#9ca3af] text-sm mb-5">Reversing <span className="text-white">{issuance?.books?.title}</span></p>
-        <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Reason for reversal..."
-          className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563] resize-none" />
+        <textarea value={reason} onChange={e => setReason(e.target.value)} rows={3} placeholder="Reason for reversal..." disabled={submitting}
+          className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563] resize-none disabled:opacity-50" />
         <div className="flex gap-3 mt-5">
-          <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={() => { if (!reason.trim()) { toast.error('Reason required'); return } onConfirm(reason) }}
-            className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Confirm</button>
+          <button onClick={onClose} disabled={submitting} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all disabled:opacity-50">Cancel</button>
+          <button onClick={handleConfirm} disabled={submitting}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+            {submitting ? 'Reversing...' : 'Confirm'}
+          </button>
         </div>
       </div>
     </div>
@@ -261,12 +270,19 @@ export default function StudentDetail() {
   }
 
   async function handleReversal(reason) {
-    const { error } = await supabase.from('issuances').update({
+    const { data, error } = await supabase.from('issuances').update({
       is_reversed: true, reversed_by: profile?.id,
       reversed_at: new Date().toISOString(), reversal_reason: reason
-    }).eq('id', reversing.id)
-    if (error) { toast.error('Failed'); return }
-    await adjustStock(reversing.book_id, 1)
+    }).eq('id', reversing.id).eq('is_reversed', false).select('id')
+    if (error) { toast.error('Failed'); setReversing(null); return }
+    if (!data || data.length === 0) {
+      toast.error('Already reversed — stock not changed again')
+      setReversing(null); fetchAll(); return
+    }
+    // a previous issuance never deducted stock when it was recorded (it's a
+    // historical note, not a real dispatch) — crediting it back here would
+    // add a phantom +1 to a book that was never actually taken out
+    if (!reversing.is_previous_issuance) await adjustStock(reversing.book_id, 1)
     toast.success('Reversed')
     logAction('ISSUANCE_REVERSED', `${reversing.books?.title} from ${student.name} (${student.student_id}) — Reason: ${reason}`)
     setReversing(null); fetchAll()
@@ -290,16 +306,22 @@ export default function StudentDetail() {
 
   async function handleIssueBag() {
     const now = new Date().toISOString()
-    const { error } = await supabase.from('students').update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now }).eq('id', id)
+    const { data, error } = await supabase.from('students')
+      .update({ bag_issued: true, bag_issued_by: profile?.id, bag_issued_at: now })
+      .eq('id', id).eq('bag_issued', false).select('id')
     if (error) { toast.error('Failed to issue bag'); return }
+    if (!data || data.length === 0) { fetchAll(); return }
     toast.success(`Bag issued to ${student.name}`)
     logAction('BAG_ISSUED', `${student.name} (${student.student_id})`)
     fetchAll()
   }
 
   async function handleRevokeBag() {
-    const { error } = await supabase.from('students').update({ bag_issued: false, bag_issued_by: null, bag_issued_at: null }).eq('id', id)
+    const { data, error } = await supabase.from('students')
+      .update({ bag_issued: false, bag_issued_by: null, bag_issued_at: null })
+      .eq('id', id).eq('bag_issued', true).select('id')
     if (error) { toast.error('Failed to revoke bag'); return }
+    if (!data || data.length === 0) { fetchAll(); return }
     toast.success(`Bag revoked for ${student.name}`)
     logAction('BAG_REVOKED', `${student.name} (${student.student_id})`)
     fetchAll()

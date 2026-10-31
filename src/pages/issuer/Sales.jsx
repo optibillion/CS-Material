@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase, adjustStock } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
@@ -154,9 +154,7 @@ export default function IssuerSales() {
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
     if (error) { toast.error('Failed to record sale'); setSubmitting(false); return }
-    for (const b of selectedBooks) {
-      await deductStock(b.id, parseInt(b.qty) || 1)
-    }
+    await Promise.all(selectedBooks.map(b => adjustStock(b.id, -(parseInt(b.qty) || 1))))
     const summary = selectedBooks.map(b => `${books.find(bk => bk.id === b.id)?.title} x${b.qty}`).join(', ')
     logAction('SALE_RECORDED', `${buyerName.trim()} (${buyerPhone || 'no phone'}) — ${summary} — ₹${total.toFixed(0)}`)
     toast.success(`Sale recorded — ${selectedBooks.length} book(s) sold to ${buyerName}`)
@@ -178,19 +176,6 @@ export default function IssuerSales() {
     setBuyerName(''); setBuyerPhone(''); setSaleMedium(''); setPaymentMode('cash'); setSelectedBooks([]); setFinalPrice(''); setRemark('')
     fetchData()
     setSubmitting(false)
-  }
-
-  async function deductStock(bookId, qty) {
-    const entries = stockEntries
-      .filter(e => e.book_id === bookId && (e.available_qty || 0) > 0)
-      .sort((a, b) => b.available_qty - a.available_qty)
-    let remaining = qty
-    for (const entry of entries) {
-      if (remaining <= 0) break
-      const deduct = Math.min(remaining, entry.available_qty)
-      await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-      remaining -= deduct
-    }
   }
 
   async function handleReturn(txn) {

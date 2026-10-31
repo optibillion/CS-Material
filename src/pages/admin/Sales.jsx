@@ -170,17 +170,7 @@ export default function Sales() {
     }))
     const { error } = await supabase.from('sales').insert(saleRows)
     if (error) { toast.error('Failed to record sale'); setRecording(false); return }
-    for (const b of selectedBooks) {
-      let remaining = parseInt(b.qty) || 1
-      const entries = stockEntries.filter(e => e.book_id === b.id && (e.available_qty || 0) > 0)
-        .sort((a, c) => c.available_qty - a.available_qty)
-      for (const entry of entries) {
-        if (remaining <= 0) break
-        const deduct = Math.min(remaining, entry.available_qty)
-        await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-        remaining -= deduct
-      }
-    }
+    await Promise.all(selectedBooks.map(b => adjustStock(b.id, -(parseInt(b.qty) || 1))))
     const summary = selectedBooks.map(b => `${books.find(bk => bk.id === b.id)?.title} x${b.qty}`).join(', ')
     logAction('SALE_RECORDED', `${buyerName.trim()} (${buyerPhone || 'no phone'}) — ${summary} — ₹${total.toFixed(0)}`)
     toast.success(`Sale recorded — ${selectedBooks.length} book(s)`)

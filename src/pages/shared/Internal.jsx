@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { supabase } from '../../lib/supabase'
+import { supabase, adjustStock } from '../../lib/supabase'
 import { useAuthStore } from '../../store/authStore'
 import { logAction } from '../../lib/audit'
 import { Boxes, UserCheck, Building2, Plus, X, Check, Search, Trash2 } from 'lucide-react'
@@ -309,25 +309,6 @@ export default function Internal() {
     setLoading(false)
   }
 
-  async function deductStock(bookId, qty) {
-    const entries = stockEntries
-      .filter(e => e.book_id === bookId && (e.available_qty || 0) > 0)
-      .sort((a, b) => b.available_qty - a.available_qty)
-    let remaining = qty
-    for (const entry of entries) {
-      if (remaining <= 0) break
-      const ded = Math.min(remaining, entry.available_qty)
-      await supabase.from('stock').update({ available_qty: entry.available_qty - ded }).eq('id', entry.id)
-      remaining -= ded
-    }
-  }
-
-  async function restoreStock(bookId, qty) {
-    const entry = stockEntries.find(e => e.book_id === bookId)
-    if (!entry) return
-    await supabase.from('stock').update({ available_qty: (entry.available_qty || 0) + qty }).eq('id', entry.id)
-  }
-
   async function handleIssue(name, selectedBooks, deduct) {
     const now = new Date().toISOString()
     const rows = selectedBooks.map(b => ({
@@ -342,9 +323,7 @@ export default function Internal() {
     const { error } = await supabase.from('internal_issuances').insert(rows)
     if (error) { toast.error('Failed to record issuance'); return }
     if (deduct) {
-      for (const b of selectedBooks) {
-        await deductStock(b.id, parseInt(b.qty) || 1)
-      }
+      await Promise.all(selectedBooks.map(b => adjustStock(b.id, -(parseInt(b.qty) || 1))))
     }
     const summary = selectedBooks.map(b => `${books.find(bk => bk.id === b.id)?.title} x${b.qty}`).join(', ')
     logAction('INTERNAL_ISSUANCE', `${TYPE_META[recipientType].label}: ${name} — ${summary}${deduct ? '' : ' (stock not deducted)'}`)
@@ -356,9 +335,7 @@ export default function Internal() {
     const { error } = await supabase.from('internal_issuances').delete().in('id', txn.ids)
     if (error) { toast.error('Failed to remove'); return }
     if (txn.stock_deducted) {
-      for (const b of txn.books) {
-        await restoreStock(b.book_id, b.qty)
-      }
+      await Promise.all(txn.books.map(b => adjustStock(b.book_id, b.qty)))
     }
     logAction('INTERNAL_ISSUANCE_REMOVED', `${TYPE_META[txn.recipient_type].label}: ${txn.recipient_name}`)
     toast.success(`Removed record for ${txn.recipient_name}`)

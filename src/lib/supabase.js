@@ -38,37 +38,19 @@ export async function uploadStudentPhoto(file, studentId) {
   return publicUrl
 }
 
+// Single source of truth for every stock-count change across the app
+// (student issuance, sales, distributor allotments, returns/reversals).
+// Always applies the full delta — a deduction larger than what's on hand
+// is allowed to push available_qty negative rather than silently
+// capping, so a shortfall is visible as "-N" instead of hidden. The next
+// stock-in just adds on top, which pays down the deficit automatically.
+//
+// Routed through the adjust_stock() Postgres function (see
+// add_atomic_stock_functions.sql) so the read-modify-write happens inside
+// one locked transaction — two near-simultaneous changes to the same book
+// (e.g. an issuance and a sale landing at the same moment) can't silently
+// overwrite each other the way a plain client-side read-then-write could.
 export async function adjustStock(bookId, delta) {
-  if (delta > 0) {
-    // crediting stock back (e.g. un-issuing, a return) — the most recently
-    // created entry for this book is as good a place as any to receive it
-    const { data } = await supabase
-      .from('stock')
-      .select('id, available_qty')
-      .eq('book_id', bookId)
-      .order('id', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (!data) return
-    await supabase.from('stock').update({ available_qty: data.available_qty + delta }).eq('id', data.id)
-    return
-  }
-
-  // deducting — a book can be tracked across more than one stock row (by
-  // location/batch), so draw down whichever rows actually have copies
-  // instead of only ever touching the single most-recent row. Matches the
-  // targeting already used for sales and distributor allotments.
-  let remaining = -delta
-  const { data: entries } = await supabase
-    .from('stock')
-    .select('id, available_qty')
-    .eq('book_id', bookId)
-    .gt('available_qty', 0)
-    .order('available_qty', { ascending: false })
-  for (const entry of entries || []) {
-    if (remaining <= 0) break
-    const deduct = Math.min(remaining, entry.available_qty)
-    await supabase.from('stock').update({ available_qty: entry.available_qty - deduct }).eq('id', entry.id)
-    remaining -= deduct
-  }
+  const { error } = await supabase.rpc('adjust_stock', { p_book_id: bookId, p_delta: delta })
+  if (error) console.warn('adjustStock failed:', error.message)
 }
