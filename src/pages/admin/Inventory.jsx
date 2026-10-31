@@ -81,7 +81,7 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
         const issuedQty   = (issuancesData||[]).length
         const allottedQty = (allotmentsData||[]).reduce((s, r) => s + (r.qty||1), 0)
         const totalDeduct = soldQty + issuedQty + allottedQty
-        const finalAvail  = Math.max(0, item.qty - totalDeduct)
+        const finalAvail  = item.qty - totalDeduct
         return { book, qty: item.qty, note: item.note, existingEntry, deductInfo: { soldQty, issuedQty, allottedQty, totalDeduct, finalAvail }, prevSafe }
       }))
       setConfirmData(results)

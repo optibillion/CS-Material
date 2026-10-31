@@ -187,6 +187,11 @@ export default function IssuerSales() {
         .in('id', txn.ids).eq('is_returned', false).select('id')
       if (error) { toast.error('Failed'); return }
       if (!data || data.length === 0) { toast.error('Already returned'); fetchData(); return }
+      // restore stock only for the rows this call actually just flipped —
+      // this page previously never credited stock back on a return at all
+      const flippedIds = new Set(data.map(d => d.id))
+      const toRestore = txn.ids.map((id, i) => ({ id, book: txn.books[i] })).filter(x => flippedIds.has(x.id)).map(x => x.book)
+      await Promise.all(toRestore.map(b => adjustStock(b.book_id, b.qty || 1)))
       toast.success('Sale marked as returned')
       logAction('SALE_RETURNED', `${txn.books.map(b => b.title).join(', ')} — ${txn.buyer_name} (${txn.buyer_phone || 'no phone'})`)
       fetchData()
@@ -218,7 +223,7 @@ export default function IssuerSales() {
       const g = groups[key]
       if (s.total_price) g.total_price = s.total_price
       if (s.remark) g.remark = s.remark
-      g.books.push({ title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
+      g.books.push({ book_id: s.book_id, title: s.books?.title, exam_level: s.books?.exam_level, unit: s.books?.unit, part: s.books?.part, medium: s.books?.medium, qty: s.qty, is_returned: s.is_returned })
       g.ids.push(s.id)
       if (!s.is_returned) g.all_returned = false
     }

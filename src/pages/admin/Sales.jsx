@@ -96,8 +96,12 @@ export default function Sales() {
         .in('id', txn.ids).eq('is_returned', false).select('id')
       if (error) { toast.error('Failed'); return }
       if (!data || data.length === 0) { toast.error('Already returned'); fetchSales(); return }
-      // Restore stock for each book that wasn't already returned
-      const toRestore = txn.books.filter(b => !b.is_returned)
+      // Restore stock only for the rows this call actually just flipped —
+      // cross-referenced against the DB's response, not local is_returned
+      // state, so a return that happened from another session in between
+      // can't cause a double-credit here
+      const flippedIds = new Set(data.map(d => d.id))
+      const toRestore = txn.ids.map((id, i) => ({ id, book: txn.books[i] })).filter(x => flippedIds.has(x.id)).map(x => x.book)
       await Promise.all(toRestore.map(b => adjustStock(b.book_id, b.qty || 1)))
       toast.success('Sale marked as returned')
       logAction('SALE_RETURNED', `${txn.books.map(b => b.title).join(', ')} — ${txn.buyer_name} (${txn.buyer_phone || 'no phone'})`)

@@ -286,6 +286,7 @@ export default function Internal() {
   const [modalOpen, setModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [undoingKeys, setUndoingKeys] = useState(new Set())
 
   useEffect(() => { fetchAll() }, [])
 
@@ -332,14 +333,25 @@ export default function Internal() {
   }
 
   async function undoTxn(txn) {
-    const { error } = await supabase.from('internal_issuances').delete().in('id', txn.ids)
-    if (error) { toast.error('Failed to remove'); return }
-    if (txn.stock_deducted) {
-      await Promise.all(txn.books.map(b => adjustStock(b.book_id, b.qty)))
+    if (undoingKeys.has(txn.key)) return
+    setUndoingKeys(prev => new Set(prev).add(txn.key))
+    try {
+      // .select() back the deleted ids so a double-click (second call finds
+      // nothing left to delete) can't credit stock a second time for rows
+      // that are already gone
+      const { data, error } = await supabase.from('internal_issuances').delete().in('id', txn.ids).select('id')
+      if (error) { toast.error('Failed to remove'); return }
+      if (txn.stock_deducted && data && data.length > 0) {
+        const deletedIds = new Set(data.map(d => d.id))
+        const toRestore = txn.ids.map((id, i) => ({ id, book: txn.books[i] })).filter(x => deletedIds.has(x.id)).map(x => x.book)
+        await Promise.all(toRestore.map(b => adjustStock(b.book_id, b.qty)))
+      }
+      logAction('INTERNAL_ISSUANCE_REMOVED', `${TYPE_META[txn.recipient_type].label}: ${txn.recipient_name}`)
+      toast.success(`Removed record for ${txn.recipient_name}`)
+      fetchAll()
+    } finally {
+      setUndoingKeys(prev => { const next = new Set(prev); next.delete(txn.key); return next })
     }
-    logAction('INTERNAL_ISSUANCE_REMOVED', `${TYPE_META[txn.recipient_type].label}: ${txn.recipient_name}`)
-    toast.success(`Removed record for ${txn.recipient_name}`)
-    fetchAll()
   }
 
   const transactions = useMemo(() => {
@@ -460,7 +472,7 @@ export default function Internal() {
                     {txn.stock_deducted ? 'Stock deducted' : 'Not deducted'}
                   </span>
                   {isAdmin && (
-                    <button onClick={() => undoTxn(txn)} className="text-[#4b5563] hover:text-red-400 transition-colors p-1" title="Remove record">
+                    <button onClick={() => undoTxn(txn)} disabled={undoingKeys.has(txn.key)} className="text-[#4b5563] hover:text-red-400 transition-colors p-1 disabled:opacity-40" title="Remove record">
                       <Trash2 size={14} />
                     </button>
                   )}

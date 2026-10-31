@@ -347,6 +347,7 @@ export default function InstitutionDetail() {
   const [editDateValue, setEditDateValue] = useState('')
   const [editingDate, setEditingDate] = useState(false)
   const [editQty, setEditQty] = useState(null) // { batchAt, bookId, value }
+  const [savingQty, setSavingQty] = useState(false)
   const [changeBookModal, setChangeBookModal] = useState(null) // { batchAt, bookId, qty, currentBook }
   const [changeBookTarget, setChangeBookTarget] = useState('')
   const [changingBook, setChangingBook] = useState(false)
@@ -646,7 +647,12 @@ export default function InstitutionDetail() {
   }
 
   async function saveEditQty() {
-    if (!editQty) return
+    // guards against a fast double Enter-press or Enter+click both firing
+    // this async function before the first call finishes, which would
+    // otherwise apply the same stock delta twice
+    if (!editQty || savingQty) return
+    setSavingQty(true)
+    try {
     const batch = batches.find(b => b.allotted_at === editQty.batchAt)
     const book = batch?.books.find(b => b.book_id === editQty.bookId)
     if (!batch || !book) { setEditQty(null); return }
@@ -693,6 +699,9 @@ export default function InstitutionDetail() {
         : 'Quantity updated'
     toast.success(stockMsg)
     setEditQty(null)
+    } finally {
+      setSavingQty(false)
+    }
     fetchAll()
   }
 
@@ -1049,11 +1058,11 @@ export default function InstitutionDetail() {
                               value={editQty.value}
                               onChange={e => setEditQty(q => ({ ...q, value: e.target.value.replace(/\D/g, '') }))}
                               onKeyDown={e => { if (e.key === 'Enter') saveEditQty(); if (e.key === 'Escape') setEditQty(null) }}
-                              autoFocus
-                              className="w-14 bg-[#12121f] border border-[#bd0a0a] rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none"
+                              autoFocus disabled={savingQty}
+                              className="w-14 bg-[#12121f] border border-[#bd0a0a] rounded px-1.5 py-0.5 text-white text-xs text-center focus:outline-none disabled:opacity-50"
                             />
-                            <button onClick={saveEditQty} className="text-emerald-400 hover:text-emerald-300 text-xs px-1 transition-colors">✓</button>
-                            <button onClick={() => setEditQty(null)} className="text-[#6b7280] hover:text-white text-xs px-1 transition-colors">✕</button>
+                            <button onClick={saveEditQty} disabled={savingQty} className="text-emerald-400 hover:text-emerald-300 text-xs px-1 transition-colors disabled:opacity-40">✓</button>
+                            <button onClick={() => setEditQty(null)} disabled={savingQty} className="text-[#6b7280] hover:text-white text-xs px-1 transition-colors disabled:opacity-40">✕</button>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5 flex-shrink-0">
