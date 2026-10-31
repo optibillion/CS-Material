@@ -368,16 +368,34 @@ function extractAuditName(to) {
   return to.split(' · ')[0].split(' (')[0].trim()
 }
 
-function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
+// Signed effect of one movement on available_qty — used to walk the
+// running balance backward from the current count. Voided (reversed
+// issuance / returned sale) rows net to zero since the credit-back
+// already happened; a previous issuance never deducted in the first
+// place; an allotment's qty is already signed (negative on a return).
+function movementEffect(m) {
+  if (m.voided) return 0
+  switch (m.type) {
+    case 'STOCK_IN': return m.qty
+    case 'ISSUANCE': return -m.qty
+    case 'SALE': return -m.qty
+    case 'ALLOTMENT': return m.qty
+    default: return 0
+  }
+}
+
+function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
   const navigate = useNavigate()
   const [movements, setMovements] = useState([])
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(false)
   const [drillCat, setDrillCat] = useState(null)
+  const [expandedKey, setExpandedKey] = useState(null)
 
   useEffect(() => {
     if (!open || !bookId) return
     setDrillCat(null)
+    setExpandedKey(null)
     setLoading(true)
     Promise.all([
       supabase.from('issuances')
@@ -435,7 +453,23 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
     navigate(`/admin/audit?q=${encodeURIComponent(m.name || extractAuditName(m.to))}`)
   }
 
+  // Running balance: movements are newest-first, so walk down from the
+  // current available count, undoing each row's effect to get the
+  // balance immediately after it happened. Only as accurate as
+  // availableQty itself — a manual Correct since the newest movement
+  // isn't reflected in these rows (Correct leaves no ledger trace).
+  const movementsWithBalance = (() => {
+    let running = availableQty ?? 0
+    const out = []
+    for (const m of movements) {
+      out.push({ ...m, balanceAfter: running })
+      running -= movementEffect(m)
+    }
+    return out
+  })()
+
   const drillItems = drillCat ? movements.filter(m => m.type === drillCat) : []
+  const isNegativeNow = (availableQty ?? 0) < 0
 
   if (!open) return null
   return (
@@ -461,6 +495,16 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
           </div>
           <button onClick={onClose} className="text-[#6b7280] hover:text-white flex-shrink-0"><X size={18} /></button>
         </div>
+
+        {/* Current available count */}
+        {availableQty != null && (
+          <div className={`flex items-center justify-between px-5 py-2.5 border-b border-[#2a2a45] flex-shrink-0 ${isNegativeNow ? 'bg-purple-500/10' : availableQty === 0 ? 'bg-red-500/10' : 'bg-[#12121f]'}`}>
+            <span className="text-[#6b7280] text-xs">Available now</span>
+            <span className={`text-sm font-bold ${isNegativeNow ? 'text-purple-400' : availableQty === 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+              {availableQty}{isNegativeNow ? ' (backordered)' : ''}
+            </span>
+          </div>
+        )}
 
         {/* Main view: totals strip + full history */}
         {!drillCat && (<>
@@ -490,10 +534,12 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
               </div>
             )) : movements.length === 0 ? (
               <p className="text-[#6b7280] text-sm text-center py-10">No movements recorded for this book</p>
-            ) : movements.map(m => {
+            ) : movementsWithBalance.map(m => {
               const ts = TYPE_STYLES[m.type]
+              const isExpanded = expandedKey === m.key
               return (
-                <div key={m.key} className={`px-5 py-3 ${m.voided ? 'opacity-40' : ''}`}>
+                <div key={m.key} onClick={() => setExpandedKey(k => k === m.key ? null : m.key)}
+                  className={`px-5 py-3 cursor-pointer hover:bg-[#12121f] transition-colors ${m.voided ? 'opacity-40' : ''}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -502,6 +548,11 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle }) {
                       </div>
                       <p className="text-white text-sm truncate">{m.type === 'STOCK_IN' ? m.to : `→ ${m.to}`}</p>
                       <p className="text-[#6b7280] text-xs mt-0.5">{m.type !== 'STOCK_IN' ? `qty ${m.qty} · ` : ''}by {m.by}</p>
+                      {isExpanded && (
+                        <p className="text-xs mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#2a2a45] text-[#9ca3af]">
+                          Available right after this: <span className={`font-bold ${m.balanceAfter < 0 ? 'text-purple-400' : m.balanceAfter === 0 ? 'text-red-400' : 'text-emerald-400'}`}>{m.balanceAfter}</span>
+                        </p>
+                      )}
                     </div>
                     <p className="text-[#6b7280] text-xs whitespace-nowrap flex-shrink-0">{format(new Date(m.date), 'dd MMM yy, hh:mm a')}</p>
                   </div>
@@ -839,7 +890,7 @@ export default function Inventory() {
                   const isLow = s.available_qty <= s.low_stock_threshold
                   return (
                     <tr key={s.id} className="hover:bg-[#12121f] transition-colors cursor-pointer"
-                      onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title })}>
+                      onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title, availableQty: s.available_qty })}>
                       <td className="px-5 py-3">
                         {(s.books?.exam_level || s.books?.unit || s.books?.part) ? (
                           <p className="text-white text-sm font-semibold leading-snug">{[s.books.exam_level, s.books.unit, s.books.part].filter(Boolean).join(' › ')}</p>
@@ -948,7 +999,7 @@ export default function Inventory() {
                       </button>
                     </div>
                   )}
-                  <button onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title })}
+                  <button onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title, availableQty: s.available_qty })}
                     className="w-full text-xs py-2 rounded-lg bg-[#12121f] border border-[#2a2a45] text-[#9ca3af] hover:text-white transition-all flex items-center justify-center gap-1">
                     <History size={11}/> View Full History
                   </button>
@@ -1052,6 +1103,7 @@ export default function Inventory() {
         onClose={() => setHistoryBook(null)}
         bookId={historyBook?.id}
         bookTitle={historyBook?.title}
+        availableQty={historyBook?.availableQty}
       />
     </div>
   )
