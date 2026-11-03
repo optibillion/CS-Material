@@ -20,7 +20,7 @@ returns integer
 language plpgsql
 as $$
 declare
-  v_id bigint;
+  v_id uuid;
   v_available integer;
 begin
   select id into v_id
@@ -54,12 +54,14 @@ grant execute on function adjust_stock(uuid, integer) to authenticated;
 
 -- Add Stock: bumps total_qty and available_qty together atomically
 -- for a book's existing stock row.
+drop function if exists add_stock_batch(uuid, integer);
+
 create or replace function add_stock_batch(p_book_id uuid, p_qty integer)
-returns table(id bigint, total_qty integer, available_qty integer)
+returns table(id uuid, total_qty integer, available_qty integer)
 language plpgsql
 as $$
 declare
-  v_id bigint;
+  v_id uuid;
 begin
   select stock.id into v_id from stock where book_id = p_book_id order by stock.id desc limit 1 for update;
 

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import toast from 'react-hot-toast'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -52,5 +53,12 @@ export async function uploadStudentPhoto(file, studentId) {
 // overwrite each other the way a plain client-side read-then-write could.
 export async function adjustStock(bookId, delta) {
   const { error } = await supabase.rpc('adjust_stock', { p_book_id: bookId, p_delta: delta })
-  if (error) console.warn('adjustStock failed:', error.message)
+  if (error) {
+    console.warn('adjustStock failed:', error.message)
+    // Surfaced loudly on purpose — a swallowed failure here is exactly how
+    // stock.available_qty silently drifted from the real transaction log
+    // in the past (the action itself still records fine, only the stock
+    // count silently stops matching reality).
+    toast.error(`Stock count did not update (${error.message}) — run the full_stock_reconciliation.sql audit`, { duration: 8000 })
+  }
 }

@@ -309,11 +309,13 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
 function CorrectModal({ open, onClose, onSave, editing, allBooks }) {
   const [availableQty, setAvailableQty] = useState('')
   const [threshold, setThreshold] = useState('50')
+  const [reason, setReason] = useState('')
 
   useEffect(() => {
     if (open && editing) {
       setAvailableQty(String(editing.available_qty))
       setThreshold(String(editing.low_stock_threshold))
+      setReason('')
     }
   }, [open, editing])
 
@@ -346,10 +348,16 @@ function CorrectModal({ open, onClose, onSave, editing, allBooks }) {
             <input type="number" min="0" value={threshold} onChange={e => setThreshold(e.target.value)}
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
           </div>
+          <div>
+            <label className="text-[#9ca3af] text-xs uppercase tracking-wide mb-2 block">Reason (optional)</label>
+            <input type="text" value={reason} onChange={e => setReason(e.target.value)} placeholder="e.g. physical recount, damaged copies"
+              className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a]" />
+            <p className="text-[#6b7280] text-xs mt-1">Saved to this book's history so the adjustment stays explained</p>
+          </div>
         </div>
         <div className="flex gap-3 px-5 py-4 border-t border-[#2a2a45]">
           <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-lg border border-[#2a2a45] text-[#9ca3af] hover:bg-[#2a2a45] text-sm transition-all">Cancel</button>
-          <button onClick={() => { onSave({ available_qty: parseInt(availableQty)||0, low_stock_threshold: parseInt(threshold)||50 }); onClose() }}
+          <button onClick={() => { onSave({ available_qty: parseInt(availableQty)||0, low_stock_threshold: parseInt(threshold)||50, reason: reason.trim() }); onClose() }}
             className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white font-semibold text-sm transition-all">Save Correction</button>
         </div>
       </div>
@@ -380,6 +388,7 @@ function movementEffect(m) {
     case 'ISSUANCE': return -m.qty
     case 'SALE': return -m.qty
     case 'ALLOTMENT': return m.qty
+    case 'CORRECTION': return m.qty
     default: return 0
   }
 }
@@ -410,7 +419,10 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
       supabase.from('stock_additions')
         .select('id, added_at, qty, note, users(name)')
         .eq('book_id', bookId).order('added_at', { ascending: false }),
-    ]).then(([{ data: iss }, { data: sal }, { data: all }, { data: additions }]) => {
+      supabase.from('stock_corrections')
+        .select('id, corrected_at, old_available, new_available, delta, reason, users(name)')
+        .eq('book_id', bookId).order('corrected_at', { ascending: false }),
+    ]).then(([{ data: iss }, { data: sal }, { data: all }, { data: additions }, { data: corrections }]) => {
       setStats({
         issued:     (iss||[]).filter(i => !i.is_previous_issuance && !i.is_reversed).length,
         prevIssued: (iss||[]).filter(i => i.is_previous_issuance).length,
@@ -442,6 +454,12 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
           to: `+${a.qty} copies received${a.note ? ` — ${a.note}` : ''}`,
           qty: a.qty, by: a.users?.name||'—', date: a.added_at, voided: false
         })),
+        ...(corrections||[]).map(c => ({
+          key: `sc-${c.id}`, type: 'CORRECTION',
+          name: '',
+          to: `${c.old_available} → ${c.new_available} (${c.delta > 0 ? '+' : ''}${c.delta})${c.reason ? ` — ${c.reason}` : ''}`,
+          qty: c.delta, by: c.users?.name||'—', date: c.corrected_at, voided: false
+        })),
       ].sort((a,b) => new Date(b.date) - new Date(a.date))
       setMovements(merged)
       setLoading(false)
@@ -455,9 +473,9 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
 
   // Running balance: movements are newest-first, so walk down from the
   // current available count, undoing each row's effect to get the
-  // balance immediately after it happened. Only as accurate as
-  // availableQty itself — a manual Correct since the newest movement
-  // isn't reflected in these rows (Correct leaves no ledger trace).
+  // balance immediately after it happened. Manual Corrects are included
+  // as their own CORRECTION movement (delta = new - old), so a recount
+  // walks back through this list cleanly too.
   const movementsWithBalance = (() => {
     let running = availableQty ?? 0
     const out = []
@@ -546,8 +564,8 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
                         <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.cls}`}>{ts.label}</span>
                         {m.voided && <span className="text-[#6b7280] text-xs">reversed/returned</span>}
                       </div>
-                      <p className="text-white text-sm truncate">{m.type === 'STOCK_IN' ? m.to : `→ ${m.to}`}</p>
-                      <p className="text-[#6b7280] text-xs mt-0.5">{m.type !== 'STOCK_IN' ? `qty ${m.qty} · ` : ''}by {m.by}</p>
+                      <p className="text-white text-sm truncate">{m.type === 'STOCK_IN' || m.type === 'CORRECTION' ? m.to : `→ ${m.to}`}</p>
+                      <p className="text-[#6b7280] text-xs mt-0.5">{m.type !== 'STOCK_IN' && m.type !== 'CORRECTION' ? `qty ${m.qty} · ` : ''}by {m.by}</p>
                       {isExpanded && (
                         <p className="text-xs mt-1.5 inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#2a2a45] text-[#9ca3af]">
                           Available right after this: <span className={`font-bold ${m.balanceAfter < 0 ? 'text-purple-400' : m.balanceAfter === 0 ? 'text-red-400' : 'text-emerald-400'}`}>{m.balanceAfter}</span>
@@ -598,6 +616,7 @@ const TYPE_STYLES = {
   PREV_ISSUANCE: { label: 'Prev. Issuance', cls: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' },
   SALE:          { label: 'Sale',           cls: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   ALLOTMENT:     { label: 'Allotment',      cls: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+  CORRECTION:    { label: 'Correction',     cls: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
 }
 
 export default function Inventory() {
@@ -707,15 +726,17 @@ export default function Inventory() {
         .select('id').single()
       if (error) { toast.error('Failed to add stock'); return }
 
-      const [{ data: salesData }, { data: issuancesData }, { data: allotmentsData }] = await Promise.all([
+      const [{ data: salesData }, { data: issuancesData }, { data: allotmentsData }, { data: internalData }] = await Promise.all([
         supabase.from('sales').select('qty').eq('book_id', bookId).eq('is_returned', false),
         supabase.from('issuances').select('id').eq('book_id', bookId).eq('is_previous_issuance', false).eq('is_reversed', false),
         supabase.from('allotments').select('qty').eq('book_id', bookId),
+        supabase.from('internal_issuances').select('qty').eq('book_id', bookId).eq('stock_deducted', true),
       ])
       const soldQty     = (salesData||[]).reduce((s, r) => s + (r.qty||1), 0)
       const issuedQty   = (issuancesData||[]).length
       const allottedQty = (allotmentsData||[]).reduce((s, r) => s + (r.qty||1), 0)
-      const totalDeduct = soldQty + issuedQty + allottedQty
+      const internalQty = (internalData||[]).reduce((s, r) => s + (r.qty||1), 0)
+      const totalDeduct = soldQty + issuedQty + allottedQty + internalQty
       // allowed to go negative, same as every other stock change — if this
       // book already had more sold/issued/allotted against it than the
       // first stock-in covers, that deficit should stay visible, not be
@@ -732,7 +753,7 @@ export default function Inventory() {
 
       if (totalDeduct > 0) {
         toast.success(
-          `${qty} added — auto-deducted ${totalDeduct} past records (${soldQty} sold · ${issuedQty} issued · ${allottedQty} distributor) → ${finalAvail} available`,
+          `${qty} added — auto-deducted ${totalDeduct} past records (${soldQty} sold · ${issuedQty} issued · ${allottedQty} distributor · ${internalQty} internal) → ${finalAvail} available`,
           { duration: 6000 }
         )
         logAction('STOCK_CREATED', `${bookTitle} +${qty}, ${finalAvail} available after reconciling ${totalDeduct} past`)
@@ -757,10 +778,23 @@ export default function Inventory() {
     }
   }
 
-  async function handleCorrect({ available_qty, low_stock_threshold }) {
+  async function handleCorrect({ available_qty, low_stock_threshold, reason }) {
+    const oldAvailable = editing.available_qty
     const { error } = await supabase.from('stock').update({ available_qty, low_stock_threshold }).eq('id', editing.id)
     if (error) { toast.error('Failed to save'); return }
     const bookTitle = books.find(b => b.id === editing.book_id)?.title || editing.book_id
+
+    if (available_qty !== oldAvailable) {
+      await supabase.from('stock_corrections').insert({
+        book_id: editing.book_id,
+        old_available: oldAvailable,
+        new_available: available_qty,
+        delta: available_qty - oldAvailable,
+        reason: reason || null,
+        corrected_by: profile?.id,
+      })
+    }
+
     toast.success('Stock count corrected')
     logAction('STOCK_CORRECTED', `${bookTitle} — available set to ${available_qty}`)
     fetchAll()
