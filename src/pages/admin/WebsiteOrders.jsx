@@ -32,7 +32,7 @@ function buildBookMediumMap(books) {
   return map
 }
 
-function buildTitleExamMap(books) {
+function buildTitleExamEntries(books) {
   const map = new Map()
   for (const b of books) {
     if (!b.title || !b.exam_level) continue
@@ -40,22 +40,33 @@ function buildTitleExamMap(books) {
     if (!map.has(key)) map.set(key, new Set())
     map.get(key).add(b.exam_level)
   }
-  return map
+  // Longest title first, so a more specific catalog title wins a prefix match
+  // before a shorter one that happens to also be a prefix of the line.
+  return [...map.entries()].sort((a, b) => b[0].length - a[0].length)
 }
 
-function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+// Order lines carry suffixes the catalog title doesn't ("— Hindi Medium
+// (Pre-Order)", "x2"), so exact equality misses real matches — but a loose
+// substring/keyword scan is unsafe here: "MP" is both an exam-level category
+// and the common abbreviation for Madhya Pradesh, which shows up inside
+// unrelated Prelims/Mains book titles about MP-state topics. Matching only a
+// whole catalog title as a prefix (followed by a separator or end of string)
+// avoids both problems.
+function lineExamLevels(line, titleExamEntries) {
+  const norm = normalizeTitle(line)
+  for (const [title, levels] of titleExamEntries) {
+    if (norm === title) return levels
+    if (norm.startsWith(title) && /^[\s\-–(]/.test(norm.slice(title.length))) return levels
+  }
+  return null
+}
 
-function orderExamLevels(order, titleExamMap, examOptions) {
+function orderExamLevels(order, titleExamEntries) {
   const levels = new Set()
   const lines = order.books_ordered ? order.books_ordered.split('\n').filter(Boolean) : [order.product_name].filter(Boolean)
   for (const line of lines) {
-    const mapped = titleExamMap.get(normalizeTitle(line))
-    if (mapped) mapped.forEach(l => levels.add(l))
-  }
-  const haystack = `${order.product_name || ''} ${order.books_ordered || ''}`
-  for (const lvl of examOptions) {
-    const re = new RegExp(`\\b${escapeRegex(lvl)}\\b`, 'i')
-    if (re.test(haystack)) levels.add(lvl)
+    const matched = lineExamLevels(line, titleExamEntries)
+    if (matched) matched.forEach(l => levels.add(l))
   }
   return levels
 }
@@ -399,7 +410,7 @@ export default function WebsiteOrders() {
   useEffect(() => { fetchOrders(); fetchBooks() }, [])
 
   const bookMediumMap = useMemo(() => buildBookMediumMap(books), [books])
-  const titleExamMap = useMemo(() => buildTitleExamMap(books), [books])
+  const titleExamEntries = useMemo(() => buildTitleExamEntries(books), [books])
   const examOptions = useMemo(() => [...new Set(books.map(b => b.exam_level).filter(Boolean))].sort(), [books])
   const bookTitleOptions = useMemo(() => [...new Set(books.map(b => b.title).filter(Boolean))].sort(), [books])
   const productOptions = useMemo(() => [...new Set(orders.map(o => o.product_name).filter(Boolean))].sort(), [orders])
@@ -490,7 +501,7 @@ export default function WebsiteOrders() {
         if (dateFrom && d < dateFrom) return false
         if (dateTo && d > dateTo) return false
       }
-      if (examFilter !== 'all' && !orderExamLevels(o, titleExamMap, examOptions).has(examFilter)) return false
+      if (examFilter !== 'all' && !orderExamLevels(o, titleExamEntries).has(examFilter)) return false
       if (bookFilter !== 'all' && !orderContainsBook(o, bookFilter)) return false
       if (productFilter !== 'all' && o.product_name !== productFilter) return false
       const q = search.trim().toLowerCase()
@@ -510,7 +521,7 @@ export default function WebsiteOrders() {
       if (stageDiff !== 0) return stageDiff
       return new Date(b.order_date || 0) - new Date(a.order_date || 0)
     })
-  }, [orders, search, dateFrom, dateTo, showAll, examFilter, bookFilter, productFilter, titleExamMap, examOptions])
+  }, [orders, search, dateFrom, dateTo, showAll, examFilter, bookFilter, productFilter, titleExamEntries])
 
   const totalRevenue = filtered.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0)
   const newCount = filtered.filter(o => !o.shipped).length
