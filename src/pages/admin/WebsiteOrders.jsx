@@ -43,6 +43,8 @@ function buildTitleExamMap(books) {
   return map
 }
 
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+
 function orderExamLevels(order, titleExamMap, examOptions) {
   const levels = new Set()
   const lines = order.books_ordered ? order.books_ordered.split('\n').filter(Boolean) : [order.product_name].filter(Boolean)
@@ -50,9 +52,10 @@ function orderExamLevels(order, titleExamMap, examOptions) {
     const mapped = titleExamMap.get(normalizeTitle(line))
     if (mapped) mapped.forEach(l => levels.add(l))
   }
-  const haystack = `${order.product_name || ''} ${order.books_ordered || ''}`.toLowerCase()
+  const haystack = `${order.product_name || ''} ${order.books_ordered || ''}`
   for (const lvl of examOptions) {
-    if (haystack.includes(lvl.toLowerCase())) levels.add(lvl)
+    const re = new RegExp(`\\b${escapeRegex(lvl)}\\b`, 'i')
+    if (re.test(haystack)) levels.add(lvl)
   }
   return levels
 }
