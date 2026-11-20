@@ -32,6 +32,39 @@ function buildBookMediumMap(books) {
   return map
 }
 
+function buildTitleExamMap(books) {
+  const map = new Map()
+  for (const b of books) {
+    if (!b.title || !b.exam_level) continue
+    const key = b.title.trim().toLowerCase()
+    if (!map.has(key)) map.set(key, new Set())
+    map.get(key).add(b.exam_level)
+  }
+  return map
+}
+
+function orderExamLevels(order, titleExamMap, examOptions) {
+  const levels = new Set()
+  const lines = order.books_ordered ? order.books_ordered.split('\n').filter(Boolean) : [order.product_name].filter(Boolean)
+  for (const line of lines) {
+    const mapped = titleExamMap.get(normalizeTitle(line))
+    if (mapped) mapped.forEach(l => levels.add(l))
+  }
+  const haystack = `${order.product_name || ''} ${order.books_ordered || ''}`.toLowerCase()
+  for (const lvl of examOptions) {
+    if (haystack.includes(lvl.toLowerCase())) levels.add(lvl)
+  }
+  return levels
+}
+
+function orderContainsBook(order, title) {
+  const norm = normalizeTitle(title)
+  if (order.books_ordered) {
+    return order.books_ordered.split('\n').filter(Boolean).some(line => normalizeTitle(line) === norm)
+  }
+  return normalizeTitle(order.product_name || '') === norm
+}
+
 function bookLanguage(line, bookMediumMap) {
   // The order line itself often carries an explicit "(Hindi)" / "(English)" /
   // "(Both)" suffix recorded at checkout — trust that first, since it's more
@@ -341,6 +374,9 @@ export default function WebsiteOrders() {
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
   const [showAll, setShowAll] = useState(true)
+  const [examFilter, setExamFilter] = useState('all')
+  const [bookFilter, setBookFilter] = useState('all')
+  const [productFilter, setProductFilter] = useState('all')
 
   async function fetchOrders() {
     setLoading(true)
@@ -353,13 +389,17 @@ export default function WebsiteOrders() {
   }
 
   async function fetchBooks() {
-    const { data } = await supabase.from('books').select('title, medium')
+    const { data } = await supabase.from('books').select('title, medium, exam_level')
     setBooks(data || [])
   }
 
   useEffect(() => { fetchOrders(); fetchBooks() }, [])
 
   const bookMediumMap = useMemo(() => buildBookMediumMap(books), [books])
+  const titleExamMap = useMemo(() => buildTitleExamMap(books), [books])
+  const examOptions = useMemo(() => [...new Set(books.map(b => b.exam_level).filter(Boolean))].sort(), [books])
+  const bookTitleOptions = useMemo(() => [...new Set(books.map(b => b.title).filter(Boolean))].sort(), [books])
+  const productOptions = useMemo(() => [...new Set(orders.map(o => o.product_name).filter(Boolean))].sort(), [orders])
 
   function applyUpdate(orderId, patch) {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...patch } : o))
@@ -447,6 +487,9 @@ export default function WebsiteOrders() {
         if (dateFrom && d < dateFrom) return false
         if (dateTo && d > dateTo) return false
       }
+      if (examFilter !== 'all' && !orderExamLevels(o, titleExamMap, examOptions).has(examFilter)) return false
+      if (bookFilter !== 'all' && !orderContainsBook(o, bookFilter)) return false
+      if (productFilter !== 'all' && o.product_name !== productFilter) return false
       const q = search.trim().toLowerCase()
       if (!q) return true
       return (
@@ -464,7 +507,7 @@ export default function WebsiteOrders() {
       if (stageDiff !== 0) return stageDiff
       return new Date(b.order_date || 0) - new Date(a.order_date || 0)
     })
-  }, [orders, search, dateFrom, dateTo, showAll])
+  }, [orders, search, dateFrom, dateTo, showAll, examFilter, bookFilter, productFilter, titleExamMap, examOptions])
 
   const totalRevenue = filtered.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0)
   const newCount = filtered.filter(o => !o.shipped).length
@@ -513,6 +556,36 @@ export default function WebsiteOrders() {
         <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#6b7280]" />
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name, phone, email, order ID, city or pincode..."
           className="w-full bg-[#1a1a2e] border border-[#2a2a45] rounded-lg pl-9 pr-4 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3">
+        {examOptions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <span className="text-[#6b7280] text-xs">Exam</span>
+            {['all', ...examOptions].map(e => (
+              <button key={e} onClick={() => setExamFilter(e)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${examFilter === e ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#1a1a2e] border-[#2a2a45] text-[#9ca3af] hover:text-white hover:border-[#bd0a0a]'}`}>
+                {e === 'all' ? 'All' : e}
+              </button>
+            ))}
+          </div>
+        )}
+        <select value={bookFilter} onChange={e => setBookFilter(e.target.value)}
+          className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#bd0a0a] max-w-[220px]">
+          <option value="all">All Books</option>
+          {bookTitleOptions.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={productFilter} onChange={e => setProductFilter(e.target.value)}
+          className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#bd0a0a] max-w-[220px]">
+          <option value="all">All Bundles / Products</option>
+          {productOptions.map(p => <option key={p} value={p}>{p}</option>)}
+        </select>
+        {(examFilter !== 'all' || bookFilter !== 'all' || productFilter !== 'all') && (
+          <button onClick={() => { setExamFilter('all'); setBookFilter('all'); setProductFilter('all') }}
+            className="text-xs text-[#6b7280] hover:text-white underline">
+            Clear filters
+          </button>
+        )}
       </div>
 
       <div className="space-y-2.5">
