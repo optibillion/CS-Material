@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Search, MapPin, Phone, Package, X, CreditCard, User, Truck, CheckSquare, Square, Trash2 } from 'lucide-react'
+import { Search, MapPin, Phone, Package, X, CreditCard, User, Truck, CheckSquare, Square, Trash2, Pencil } from 'lucide-react'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '../../store/authStore'
@@ -97,7 +97,84 @@ function Field({ label, value }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, readOnly, bookMediumMap }) {
+const EDIT_FIELDS = [
+  { key: 'buyer_name', label: 'Naam / Name' },
+  { key: 'phone', label: 'Mobile' },
+  { key: 'email', label: 'Email' },
+  { key: 'house', label: 'House / Flat / Building' },
+  { key: 'locality', label: 'Colony / Locality' },
+  { key: 'city', label: 'City / Tehsil' },
+  { key: 'district', label: 'District / Zila' },
+  { key: 'state', label: 'State / Rajya' },
+  { key: 'pincode', label: 'Pincode' },
+  { key: 'amount', label: 'Amount', numeric: true },
+  { key: 'status', label: 'Payment Status' },
+  { key: 'product_name', label: 'Product' },
+  { key: 'razorpay_order_id', label: 'Razorpay Order ID' },
+  { key: 'razorpay_payment_id', label: 'Payment ID' },
+]
+
+function OrderEditModal({ order, onClose, onSave }) {
+  const [form, setForm] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!order) { setForm(null); return }
+    const init = {}
+    for (const f of EDIT_FIELDS) init[f.key] = order[f.key] ?? ''
+    setForm(init)
+  }, [order?.id])
+
+  if (!order || !form) return null
+
+  async function handleSave() {
+    setSaving(true)
+    const ok = await onSave(order, form)
+    setSaving(false)
+    if (ok) onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[70] px-4" onClick={onClose}>
+      <div
+        className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-5 border-b border-[#2a2a45] flex-shrink-0">
+          <h2 className="text-white font-bold text-lg">Edit Order #{order.cs_order_id}</h2>
+          <button onClick={onClose} className="text-[#6b7280] hover:text-white p-1"><X size={18} /></button>
+        </div>
+
+        <div className="px-6 py-5 overflow-y-auto space-y-3">
+          {EDIT_FIELDS.map(f => (
+            <div key={f.key}>
+              <label className="text-[#6b7280] text-[10px] font-semibold uppercase tracking-wide">{f.label}</label>
+              <input
+                type={f.numeric ? 'number' : 'text'}
+                value={form[f.key]}
+                onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                className="w-full mt-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-[#2a2a45] flex-shrink-0">
+          <button onClick={onClose} disabled={saving}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white text-sm font-medium transition-all disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 px-4 py-2.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white text-sm font-semibold transition-all disabled:opacity-50">
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, onEditRequest, readOnly, canEdit, bookMediumMap }) {
   const [awbInput, setAwbInput] = useState('')
   const [showAwbInput, setShowAwbInput] = useState(false)
 
@@ -121,6 +198,11 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
           </div>
           <div className="flex items-start gap-3">
             {order.amount != null && <span className="text-[#f0a500] font-bold text-xl">₹{Number(order.amount).toLocaleString('en-IN')}</span>}
+            {canEdit && (
+              <button onClick={() => onEditRequest(order)} title="Edit order details" className="text-[#6b7280] hover:text-white p-1 -mt-1">
+                <Pencil size={16} />
+              </button>
+            )}
             <button onClick={onClose} className="text-[#6b7280] hover:text-white p-1 -mt-1"><X size={18} /></button>
           </div>
         </div>
@@ -246,13 +328,14 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
 }
 
 export default function WebsiteOrders() {
-  const { isViewAdmin } = useAuthStore()
+  const { isViewAdmin, isAdmin } = useAuthStore()
   const [orders, setOrders] = useState([])
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [editingOrder, setEditingOrder] = useState(null)
 
   const today = new Date().toISOString().slice(0, 10)
   const [dateFrom, setDateFrom] = useState(today)
@@ -306,6 +389,46 @@ export default function WebsiteOrders() {
     if (error) { toast.error('Failed to update delivery status'); return }
     applyUpdate(order.id, patch)
     toast.success(delivered ? 'Marked as delivered' : 'Delivery unmarked')
+  }
+
+  async function handleEditSave(order, form) {
+    const patch = {
+      buyer_name: form.buyer_name.trim() || null,
+      phone: form.phone.trim() || null,
+      email: form.email.trim() || null,
+      house: form.house.trim() || null,
+      locality: form.locality.trim() || null,
+      city: form.city.trim() || null,
+      district: form.district.trim() || null,
+      state: form.state.trim() || null,
+      pincode: form.pincode.trim() || null,
+      amount: form.amount === '' ? null : Number(form.amount),
+      status: form.status.trim() || null,
+      product_name: form.product_name.trim() || null,
+      razorpay_order_id: form.razorpay_order_id.trim() || null,
+      razorpay_payment_id: form.razorpay_payment_id.trim() || null,
+    }
+    const { error } = await supabase.rpc('update_website_order_details', {
+      p_id: order.id,
+      p_buyer_name: patch.buyer_name,
+      p_phone: patch.phone,
+      p_email: patch.email,
+      p_house: patch.house,
+      p_locality: patch.locality,
+      p_city: patch.city,
+      p_district: patch.district,
+      p_state: patch.state,
+      p_pincode: patch.pincode,
+      p_amount: patch.amount,
+      p_status: patch.status,
+      p_product_name: patch.product_name,
+      p_razorpay_order_id: patch.razorpay_order_id,
+      p_razorpay_payment_id: patch.razorpay_payment_id,
+    })
+    if (error) { toast.error('Failed to save — has add_website_orders_detail_edit.sql been run in Supabase?'); return false }
+    applyUpdate(order.id, patch)
+    toast.success('Order details updated')
+    return true
   }
 
   async function handleDelete(order) {
@@ -454,8 +577,16 @@ export default function WebsiteOrders() {
         onUnship={handleUnship}
         onDeliver={handleDeliver}
         onDeleteRequest={(order) => setDeleteConfirm(order)}
+        onEditRequest={(order) => setEditingOrder(order)}
         bookMediumMap={bookMediumMap}
         readOnly={isViewAdmin}
+        canEdit={isAdmin}
+      />
+
+      <OrderEditModal
+        order={editingOrder}
+        onClose={() => setEditingOrder(null)}
+        onSave={handleEditSave}
       />
 
       {deleteConfirm && (
