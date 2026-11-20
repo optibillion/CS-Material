@@ -56,7 +56,7 @@ function BookModal({ open, onClose, onSave, initial }) {
             <label className="text-[#9ca3af] text-sm mb-1.5 block">Exam Level</label>
             <input list="exam-lvl-list" value={form.exam_level || ''} onChange={e => set('exam_level', e.target.value)} placeholder="e.g. Prelims, Mains"
               className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
-            <datalist id="exam-lvl-list"><option value="Prelims"/><option value="Mains"/><option value="Interview"/></datalist>
+            <datalist id="exam-lvl-list"><option value="Prelims"/><option value="Mains"/><option value="Interview"/><option value="MP"/></datalist>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
