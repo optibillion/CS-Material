@@ -67,22 +67,35 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
       const results = await Promise.all(valid.map(async item => {
         const book = allBooks.find(b => b.id === item.bookId)
         const existingEntry = stock.find(s => s.book_id === item.bookId)
-        const { data: prevData } = await supabase.from('issuances').select('id').eq('book_id', item.bookId).eq('is_previous_issuance', true)
-        const prevSafe = (prevData||[]).length
-        if (existingEntry) {
-          return { book, qty: item.qty, note: item.note, existingEntry, deductInfo: null, prevSafe }
-        }
-        const [{ data: salesData }, { data: issuancesData }, { data: allotmentsData }] = await Promise.all([
+        // Always reconcile against the full ledger — not just on a book's
+        // first-ever stock row — so an existing book's available_qty is
+        // never just "current value + qty" (which silently carries forward
+        // any drift from a failed deduction elsewhere); it's always
+        // recomputed from total_qty minus everything that's actually out.
+        const [{ data: prevData }, { data: salesData }, { data: issuancesData }, { data: allotmentsData }, { data: internalData }, { data: correctionsData }] = await Promise.all([
+          supabase.from('issuances').select('id').eq('book_id', item.bookId).eq('is_previous_issuance', true),
           supabase.from('sales').select('qty').eq('book_id', item.bookId).eq('is_returned', false),
           supabase.from('issuances').select('id').eq('book_id', item.bookId).eq('is_previous_issuance', false).eq('is_reversed', false),
           supabase.from('allotments').select('qty').eq('book_id', item.bookId),
+          supabase.from('internal_issuances').select('qty').eq('book_id', item.bookId).eq('stock_deducted', true),
+          supabase.from('stock_corrections').select('delta').eq('book_id', item.bookId),
         ])
-        const soldQty     = (salesData||[]).reduce((s, r) => s + (r.qty||1), 0)
-        const issuedQty   = (issuancesData||[]).length
-        const allottedQty = (allotmentsData||[]).reduce((s, r) => s + (r.qty||1), 0)
-        const totalDeduct = soldQty + issuedQty + allottedQty
-        const finalAvail  = item.qty - totalDeduct
-        return { book, qty: item.qty, note: item.note, existingEntry, deductInfo: { soldQty, issuedQty, allottedQty, totalDeduct, finalAvail }, prevSafe }
+        const prevSafe       = (prevData||[]).length
+        const soldQty        = (salesData||[]).reduce((s, r) => s + (r.qty||1), 0)
+        const issuedQty      = (issuancesData||[]).length
+        const allottedQty    = (allotmentsData||[]).reduce((s, r) => s + (r.qty||0), 0)
+        const internalQty    = (internalData||[]).reduce((s, r) => s + (r.qty||1), 0)
+        const correctionNet  = (correctionsData||[]).reduce((s, r) => s + (r.delta||0), 0)
+        const totalDeduct    = soldQty + issuedQty + allottedQty + internalQty
+        const newTotalQty    = (existingEntry?.total_qty || 0) + item.qty
+        const finalAvail     = newTotalQty - totalDeduct + correctionNet
+        const plainAddAvail  = (existingEntry?.available_qty ?? 0) + item.qty
+        const driftCaught    = finalAvail - plainAddAvail
+        return {
+          book, qty: item.qty, note: item.note, existingEntry,
+          deductInfo: { soldQty, issuedQty, allottedQty, internalQty, correctionNet, totalDeduct, finalAvail, driftCaught },
+          prevSafe,
+        }
       }))
       setConfirmData(results)
       setStep('confirm')
@@ -264,32 +277,43 @@ function AddBatchModal({ open, onClose, onSave, allBooks, stock, preBook }) {
                   </div>
                 )}
 
-                {item.deductInfo ? (
-                  <div className="space-y-1.5">
-                    <p className="text-red-400 text-xs font-semibold uppercase tracking-wide">First entry — auto-deduction</p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {[['Issued', item.deductInfo.issuedQty], ['Sold', item.deductInfo.soldQty], ['Allotted', item.deductInfo.allottedQty]].map(([label, val]) => (
-                        <div key={label} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg py-2 text-center">
-                          <p className="text-white font-semibold text-sm">{val}</p>
-                          <p className="text-[#6b7280] text-xs">{label}</p>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex justify-between items-center border-t border-[#2a2a45] pt-1.5">
-                      <span className="text-[#9ca3af] text-xs">Total deducted</span>
-                      <span className="text-red-400 font-semibold">− {item.deductInfo.totalDeduct}</span>
-                    </div>
+                <div className="space-y-1.5">
+                  <p className="text-red-400 text-xs font-semibold uppercase tracking-wide">
+                    {item.existingEntry ? 'Reconciled against full ledger' : 'First entry — auto-reconciled'}
+                  </p>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[['Issued', item.deductInfo.issuedQty], ['Sold', item.deductInfo.soldQty], ['Allotted', item.deductInfo.allottedQty], ['Internal', item.deductInfo.internalQty]].map(([label, val]) => (
+                      <div key={label} className="bg-[#1a1a2e] border border-[#2a2a45] rounded-lg py-2 text-center">
+                        <p className="text-white font-semibold text-sm">{val}</p>
+                        <p className="text-[#6b7280] text-xs">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center border-t border-[#2a2a45] pt-1.5">
+                    <span className="text-[#9ca3af] text-xs">Total deducted</span>
+                    <span className="text-red-400 font-semibold">− {item.deductInfo.totalDeduct}</span>
+                  </div>
+                  {item.deductInfo.correctionNet !== 0 && (
                     <div className="flex justify-between items-center">
-                      <span className="text-[#9ca3af] text-xs">Final available</span>
-                      <span className="text-emerald-400 font-bold text-base">{item.deductInfo.finalAvail}</span>
+                      <span className="text-[#9ca3af] text-xs">Manual corrections</span>
+                      <span className={`font-semibold ${item.deductInfo.correctionNet > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {item.deductInfo.correctionNet > 0 ? '+' : ''}{item.deductInfo.correctionNet}
+                      </span>
                     </div>
-                  </div>
-                ) : item.existingEntry ? (
+                  )}
                   <div className="flex justify-between items-center">
-                    <span className="text-[#9ca3af] text-xs">Available after adding</span>
-                    <span className="text-emerald-400 font-bold">{item.existingEntry.available_qty + item.qty}</span>
+                    <span className="text-[#9ca3af] text-xs">Final available</span>
+                    <span className="text-emerald-400 font-bold text-base">{item.deductInfo.finalAvail}</span>
                   </div>
-                ) : null}
+                  {item.deductInfo.driftCaught !== 0 && (
+                    <div className="flex items-center justify-between bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-1.5 mt-1">
+                      <span className="text-yellow-400/90 text-xs">vs. a plain add (no reconcile)</span>
+                      <span className="text-yellow-400 font-semibold text-xs">
+                        {item.deductInfo.driftCaught > 0 ? '+' : ''}{item.deductInfo.driftCaught} caught
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -769,61 +793,33 @@ export default function Inventory() {
   async function handleAddBatch({ bookId, qty, note, existingEntry }) {
     const bookTitle = books.find(b => b.id === bookId)?.title || 'Book'
 
-    if (existingEntry) {
-      // Atomic — total_qty and available_qty are bumped inside one locked
-      // transaction server-side, so two near-simultaneous "+Add" actions on
-      // the same book can't overwrite each other's increment
-      const { data: updated, error } = await supabase.rpc('add_stock_batch', { p_book_id: bookId, p_qty: qty }).single()
-      if (error) { toast.error('Failed to update stock — has add_atomic_stock_functions.sql been run in Supabase?'); return }
+    // Always reconciled against the full ledger server-side, atomically —
+    // not just on a book's first-ever stock row. A plain "available_qty +=
+    // qty" would silently carry forward any drift from a deduction that
+    // failed elsewhere; this recomputes available_qty from total_qty minus
+    // everything actually out (plus manual corrections) on every add, so
+    // existing drift gets caught and corrected the moment new stock comes
+    // in, not just once at the very beginning of a book's life.
+    const plainAddAvail = (existingEntry?.available_qty ?? 0) + qty
+    const { data: updated, error } = await supabase
+      .rpc('add_stock_reconciled', { p_book_id: bookId, p_qty: qty }).single()
+    if (error) { toast.error('Failed to update stock — has fix_add_stock_always_reconciles.sql been run in Supabase?'); return }
 
-      await supabase.from('stock_additions').insert({
-        book_id: bookId, qty, added_by: profile?.id, note
-      })
+    await supabase.from('stock_additions').insert({
+      book_id: bookId, qty, added_by: profile?.id, note
+    })
 
+    const driftCaught = updated.available_qty - plainAddAvail
+    const breakdown = `${updated.sold_qty} sold · ${updated.issued_qty} issued · ${updated.allotted_qty} distributor · ${updated.internal_qty} internal`
+    if (driftCaught !== 0) {
+      toast.success(
+        `+${qty} added — reconciled against full ledger (${breakdown}${updated.correction_net ? ` · ${updated.correction_net > 0 ? '+' : ''}${updated.correction_net} corrections` : ''}) → ${updated.available_qty} available (${driftCaught > 0 ? '+' : ''}${driftCaught} vs a plain add)`,
+        { duration: 7000 }
+      )
+      logAction('STOCK_ADDED', `${bookTitle} +${qty} copies — reconciled ${driftCaught > 0 ? '+' : ''}${driftCaught} vs a plain add (ledger: ${breakdown})`)
+    } else {
       toast.success(`+${qty} copies added → ${updated.available_qty} available`)
       logAction('STOCK_ADDED', `${bookTitle} +${qty} copies`)
-    } else {
-      // First time — create entry then reconcile past records
-      const { data: newStock, error } = await supabase.from('stock')
-        .insert({ book_id: bookId, location: 'Main Campus', total_qty: qty, available_qty: qty, low_stock_threshold: 50 })
-        .select('id').single()
-      if (error) { toast.error('Failed to add stock'); return }
-
-      const [{ data: salesData }, { data: issuancesData }, { data: allotmentsData }, { data: internalData }] = await Promise.all([
-        supabase.from('sales').select('qty').eq('book_id', bookId).eq('is_returned', false),
-        supabase.from('issuances').select('id').eq('book_id', bookId).eq('is_previous_issuance', false).eq('is_reversed', false),
-        supabase.from('allotments').select('qty').eq('book_id', bookId),
-        supabase.from('internal_issuances').select('qty').eq('book_id', bookId).eq('stock_deducted', true),
-      ])
-      const soldQty     = (salesData||[]).reduce((s, r) => s + (r.qty||1), 0)
-      const issuedQty   = (issuancesData||[]).length
-      const allottedQty = (allotmentsData||[]).reduce((s, r) => s + (r.qty||1), 0)
-      const internalQty = (internalData||[]).reduce((s, r) => s + (r.qty||1), 0)
-      const totalDeduct = soldQty + issuedQty + allottedQty + internalQty
-      // allowed to go negative, same as every other stock change — if this
-      // book already had more sold/issued/allotted against it than the
-      // first stock-in covers, that deficit should stay visible, not be
-      // floored at 0 and hidden
-      const finalAvail  = qty - totalDeduct
-
-      if (totalDeduct > 0) {
-        await supabase.from('stock').update({ available_qty: finalAvail }).eq('id', newStock.id)
-      }
-
-      await supabase.from('stock_additions').insert({
-        book_id: bookId, qty, added_by: profile?.id, note
-      })
-
-      if (totalDeduct > 0) {
-        toast.success(
-          `${qty} added — auto-deducted ${totalDeduct} past records (${soldQty} sold · ${issuedQty} issued · ${allottedQty} distributor · ${internalQty} internal) → ${finalAvail} available`,
-          { duration: 6000 }
-        )
-        logAction('STOCK_CREATED', `${bookTitle} +${qty}, ${finalAvail} available after reconciling ${totalDeduct} past`)
-      } else {
-        toast.success(`${qty} copies added — ${finalAvail} available`)
-        logAction('STOCK_CREATED', `${bookTitle} +${qty}`)
-      }
     }
     fetchAll()
   }
