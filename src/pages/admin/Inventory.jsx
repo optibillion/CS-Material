@@ -370,6 +370,7 @@ const DRILL_META = {
   PREV_ISSUANCE: { label: 'Prev. Issuances', cls: 'text-[#f0a500]', badge: 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30' },
   SALE:          { label: 'Sales',          cls: 'text-violet-400', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   ALLOTMENT:     { label: 'Allotments',     cls: 'text-orange-400', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+  INTERNAL:      { label: 'Internal',       cls: 'text-cyan-400',   badge: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
 }
 
 function extractAuditName(to) {
@@ -380,20 +381,24 @@ function extractAuditName(to) {
 // running balance backward from the current count. Voided (reversed
 // issuance / returned sale) rows net to zero since the credit-back
 // already happened; a previous issuance never deducted in the first
-// place; an allotment's qty is already signed (negative on a return).
+// place; an allotment's qty is already signed (negative on a return);
+// an internal issuance only deducts if its "deduct from stock" option
+// was checked (noDeduct rows, same as a previous issuance, never hit
+// the stock count).
 function movementEffect(m) {
-  if (m.voided) return 0
+  if (m.voided || m.noDeduct) return 0
   switch (m.type) {
     case 'STOCK_IN': return m.qty
     case 'ISSUANCE': return -m.qty
     case 'SALE': return -m.qty
     case 'ALLOTMENT': return m.qty
     case 'CORRECTION': return m.qty
+    case 'INTERNAL': return -m.qty
     default: return 0
   }
 }
 
-function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
+function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty, totalQty }) {
   const navigate = useNavigate()
   const [movements, setMovements] = useState([])
   const [stats, setStats] = useState(null)
@@ -422,12 +427,29 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
       supabase.from('stock_corrections')
         .select('id, corrected_at, old_available, new_available, delta, reason, users(name)')
         .eq('book_id', bookId).order('corrected_at', { ascending: false }),
-    ]).then(([{ data: iss }, { data: sal }, { data: all }, { data: additions }, { data: corrections }]) => {
+      // internal_issuances.issued_by has no FK constraint to users, so it
+      // can't be embedded in the select — resolved via a separate lookup
+      // below, same approach Internal.jsx uses for the same table.
+      supabase.from('internal_issuances')
+        .select('id, issued_at, recipient_type, recipient_name, qty, stock_deducted, issued_by')
+        .eq('book_id', bookId).order('issued_at', { ascending: false }),
+      supabase.from('users').select('id, name'),
+    ]).then(([{ data: iss }, { data: sal }, { data: all }, { data: additions }, { data: corrections }, { data: internal }, { data: usersList }]) => {
+      const usersMap = Object.fromEntries((usersList||[]).map(u => [u.id, u.name]))
+      const sold = (sal||[]).filter(s => !s.is_returned).reduce((s, r) => s + (r.qty||1), 0)
+      const issued = (iss||[]).filter(i => !i.is_previous_issuance && !i.is_reversed).length
+      const prevIssued = (iss||[]).filter(i => i.is_previous_issuance).length
+      const allotted = (all||[]).reduce((s, r) => s + (r.qty||0), 0)
+      const internalDeducted = (internal||[]).filter(r => r.stock_deducted).reduce((s, r) => s + (r.qty||1), 0)
+      const internalNotDeducted = (internal||[]).filter(r => !r.stock_deducted).reduce((s, r) => s + (r.qty||1), 0)
+      const correctionsNet = (corrections||[]).reduce((s, c) => s + (c.delta||0), 0)
+      const totalOut = sold + issued + allotted + internalDeducted
+      const expected = (totalQty||0) - totalOut + correctionsNet
       setStats({
-        issued:     (iss||[]).filter(i => !i.is_previous_issuance && !i.is_reversed).length,
-        prevIssued: (iss||[]).filter(i => i.is_previous_issuance).length,
-        sold:       (sal||[]).filter(s => !s.is_returned).reduce((s, r) => s + (r.qty||1), 0),
-        allotted:   (all||[]).reduce((s, r) => s + (r.qty||1), 0),
+        issued, prevIssued, sold, allotted,
+        internal: internalDeducted, internalNotDeducted,
+        totalOut, correctionsNet, expected,
+        mismatch: (availableQty ?? 0) - expected,
       })
       const merged = [
         ...(iss||[]).map(i => ({
@@ -459,6 +481,13 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
           name: '',
           to: `${c.old_available} → ${c.new_available} (${c.delta > 0 ? '+' : ''}${c.delta})${c.reason ? ` — ${c.reason}` : ''}`,
           qty: c.delta, by: c.users?.name||'—', date: c.corrected_at, voided: false
+        })),
+        ...(internal||[]).map(r => ({
+          key: `ii-${r.id}`, type: 'INTERNAL',
+          name: r.recipient_name || '—',
+          to: `${r.recipient_name||'—'} (${r.recipient_type})`,
+          qty: r.qty||1, by: usersMap[r.issued_by]||'—', date: r.issued_at,
+          voided: false, noDeduct: !r.stock_deducted
         })),
       ].sort((a,b) => new Date(b.date) - new Date(a.date))
       setMovements(merged)
@@ -524,15 +553,46 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
           </div>
         )}
 
+        {/* Total In / Total Out / Mismatch — total_qty minus every deducting
+            movement (sales, issuances, allotments, internal-with-deduct),
+            plus manual corrections, should equal Available now. When it
+            doesn't, Mismatch shows the gap instead of hiding it. */}
+        {!loading && stats && !drillCat && (
+          <div className="grid grid-cols-3 divide-x divide-[#2a2a45] border-b border-[#2a2a45] flex-shrink-0 bg-[#12121f]">
+            <div className="py-2.5 text-center">
+              <p className="text-emerald-400 text-sm font-bold">{totalQty ?? '—'}</p>
+              <p className="text-[#6b7280] text-[10px] mt-0.5">Total In</p>
+            </div>
+            <div className="py-2.5 text-center">
+              <p className="text-red-400 text-sm font-bold">{stats.totalOut}</p>
+              <p className="text-[#6b7280] text-[10px] mt-0.5">Total Out</p>
+            </div>
+            <div className="py-2.5 text-center">
+              <p className={`text-sm font-bold ${stats.mismatch === 0 ? 'text-emerald-400' : 'text-yellow-400'}`}>
+                {stats.mismatch > 0 ? '+' : ''}{stats.mismatch}
+              </p>
+              <p className="text-[#6b7280] text-[10px] mt-0.5">Mismatch</p>
+            </div>
+          </div>
+        )}
+        {!loading && stats && stats.mismatch !== 0 && !drillCat && (
+          <div className="px-5 py-2 border-b border-[#2a2a45] flex-shrink-0 bg-yellow-500/5">
+            <p className="text-yellow-400/90 text-xs leading-snug">
+              Total In ({totalQty ?? 0}) minus Total Out ({stats.totalOut}){stats.correctionsNet ? ` plus corrections (${stats.correctionsNet > 0 ? '+' : ''}${stats.correctionsNet})` : ''} expects <span className="font-semibold">{stats.expected}</span> available, but the stock table shows <span className="font-semibold">{availableQty}</span> — a gap of {Math.abs(stats.mismatch)}.
+            </p>
+          </div>
+        )}
+
         {/* Main view: totals strip + full history */}
         {!drillCat && (<>
           {!loading && stats && (
-            <div className="grid grid-cols-4 divide-x divide-[#2a2a45] border-b border-[#2a2a45] flex-shrink-0">
+            <div className="grid grid-cols-5 divide-x divide-[#2a2a45] border-b border-[#2a2a45] flex-shrink-0">
               {[
                 { cat: 'ISSUANCE',      label: 'Issuances',   value: stats.issued,     cls: 'text-red-400' },
                 { cat: 'PREV_ISSUANCE', label: 'Prev. Issue', value: stats.prevIssued, cls: 'text-[#f0a500]' },
                 { cat: 'SALE',          label: 'Sales',        value: stats.sold,       cls: 'text-violet-400' },
                 { cat: 'ALLOTMENT',     label: 'Allotted',     value: stats.allotted,   cls: 'text-orange-400' },
+                { cat: 'INTERNAL',      label: 'Internal',     value: stats.internal,   cls: 'text-cyan-400' },
               ].map(item => (
                 <button key={item.cat} onClick={() => setDrillCat(item.cat)}
                   className="py-3 text-center hover:bg-[#12121f] transition-colors group">
@@ -557,12 +617,13 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
               const isExpanded = expandedKey === m.key
               return (
                 <div key={m.key} onClick={() => setExpandedKey(k => k === m.key ? null : m.key)}
-                  className={`px-5 py-3 cursor-pointer hover:bg-[#12121f] transition-colors ${m.voided ? 'opacity-40' : ''}`}>
+                  className={`px-5 py-3 cursor-pointer hover:bg-[#12121f] transition-colors ${(m.voided || m.noDeduct) ? 'opacity-40' : ''}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${ts.cls}`}>{ts.label}</span>
                         {m.voided && <span className="text-[#6b7280] text-xs">reversed/returned</span>}
+                        {m.noDeduct && <span className="text-[#6b7280] text-xs">not deducted (record only)</span>}
                       </div>
                       <p className="text-white text-sm truncate">{m.type === 'STOCK_IN' || m.type === 'CORRECTION' ? m.to : `→ ${m.to}`}</p>
                       <p className="text-[#6b7280] text-xs mt-0.5">{m.type !== 'STOCK_IN' && m.type !== 'CORRECTION' ? `qty ${m.qty} · ` : ''}by {m.by}</p>
@@ -586,11 +647,12 @@ function BookHistoryModal({ open, onClose, bookId, bookTitle, availableQty }) {
             {drillItems.length === 0 ? (
               <p className="text-[#6b7280] text-sm text-center py-10">No records</p>
             ) : drillItems.map(m => (
-              <div key={m.key} className={`px-5 py-3 flex items-center gap-3 ${m.voided ? 'opacity-40' : ''}`}>
+              <div key={m.key} className={`px-5 py-3 flex items-center gap-3 ${(m.voided || m.noDeduct) ? 'opacity-40' : ''}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-0.5">
                     <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${DRILL_META[drillCat].badge}`}>×{m.qty}</span>
                     {m.voided && <span className="text-[#6b7280] text-xs">reversed/returned</span>}
+                    {m.noDeduct && <span className="text-[#6b7280] text-xs">not deducted (record only)</span>}
                   </div>
                   <p className="text-white text-sm font-medium truncate">{m.to}</p>
                   <p className="text-[#6b7280] text-xs mt-0.5">
@@ -617,6 +679,7 @@ const TYPE_STYLES = {
   SALE:          { label: 'Sale',           cls: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   ALLOTMENT:     { label: 'Allotment',      cls: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
   CORRECTION:    { label: 'Correction',     cls: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
+  INTERNAL:      { label: 'Internal',       cls: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
 }
 
 export default function Inventory() {
@@ -924,7 +987,7 @@ export default function Inventory() {
                   const isLow = s.available_qty <= s.low_stock_threshold
                   return (
                     <tr key={s.id} className="hover:bg-[#12121f] transition-colors cursor-pointer"
-                      onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title, availableQty: s.available_qty })}>
+                      onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title, availableQty: s.available_qty, totalQty: s.total_qty })}>
                       <td className="px-5 py-3">
                         {(s.books?.exam_level || s.books?.unit || s.books?.part) ? (
                           <p className="text-white text-sm font-semibold leading-snug">{[s.books.exam_level, s.books.unit, s.books.part].filter(Boolean).join(' › ')}</p>
@@ -1033,7 +1096,7 @@ export default function Inventory() {
                       </button>
                     </div>
                   )}
-                  <button onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title, availableQty: s.available_qty })}
+                  <button onClick={() => setHistoryBook({ id: s.book_id, title: s.books?.title, availableQty: s.available_qty, totalQty: s.total_qty })}
                     className="w-full text-xs py-2 rounded-lg bg-[#12121f] border border-[#2a2a45] text-[#9ca3af] hover:text-white transition-all flex items-center justify-center gap-1">
                     <History size={11}/> View Full History
                   </button>
@@ -1138,6 +1201,7 @@ export default function Inventory() {
         bookId={historyBook?.id}
         bookTitle={historyBook?.title}
         availableQty={historyBook?.availableQty}
+        totalQty={historyBook?.totalQty}
       />
     </div>
   )
