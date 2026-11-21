@@ -32,41 +32,63 @@ function buildBookMediumMap(books) {
   return map
 }
 
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+
+// A catalog title is usually "<Hindi phrase> - <English phrase>" (or just
+// one language) — split on the dash so a checkout line only needs to
+// contain whichever half it actually carries. Real "Build Your Own Bundle"
+// lines look like "Prelims Unit 1 — संकल्पना एवं विचार": a website-added
+// label in front of just the Hindi half, missing the catalog's English
+// suffix entirely — so neither exact equality nor "starts with the full
+// title" can ever match it. Phrases shorter than 4 chars are dropped so a
+// stray short fragment can't collide with something unrelated.
+function titlePhrases(title) {
+  return title.split(/[-–—]/).map(p => p.trim().toLowerCase()).filter(p => p.length >= 4)
+}
+
 function buildTitleExamEntries(books) {
   const map = new Map()
   for (const b of books) {
     if (!b.title || !b.exam_level) continue
-    const key = b.title.trim().toLowerCase()
-    if (!map.has(key)) map.set(key, new Set())
-    map.get(key).add(b.exam_level)
+    for (const phrase of titlePhrases(b.title)) {
+      if (!map.has(phrase)) map.set(phrase, new Set())
+      map.get(phrase).add(b.exam_level)
+    }
   }
-  // Longest title first, so a more specific catalog title wins a prefix match
-  // before a shorter one that happens to also be a prefix of the line.
+  // Longest phrase first, so a more specific/longer phrase wins before a
+  // shorter one that happens to also be contained in the line.
   return [...map.entries()].sort((a, b) => b[0].length - a[0].length)
 }
 
-// Order lines carry suffixes the catalog title doesn't ("— Hindi Medium
-// (Pre-Order)", "x2"), so exact equality misses real matches — but a loose
-// substring/keyword scan is unsafe here: "MP" is both an exam-level category
-// and the common abbreviation for Madhya Pradesh, which shows up inside
-// unrelated Prelims/Mains book titles about MP-state topics. Matching only a
-// whole catalog title as a prefix (followed by a separator or end of string)
-// avoids both problems.
+// Whole-title containment (not a loose keyword scan) keeps this specific
+// enough to avoid the old bug — "MP" matching inside unrelated Prelims/Mains
+// book titles whose subject matter happens to be about Madhya Pradesh.
 function lineExamLevels(line, titleExamEntries) {
   const norm = normalizeTitle(line)
-  for (const [title, levels] of titleExamEntries) {
-    if (norm === title) return levels
-    if (norm.startsWith(title) && /^[\s\-–(]/.test(norm.slice(title.length))) return levels
+  for (const [phrase, levels] of titleExamEntries) {
+    if (norm.includes(phrase)) return levels
   }
   return null
 }
 
-function orderExamLevels(order, titleExamEntries) {
+function orderExamLevels(order, titleExamEntries, examOptions) {
   const levels = new Set()
   const lines = order.books_ordered ? order.books_ordered.split('\n').filter(Boolean) : [order.product_name].filter(Boolean)
   for (const line of lines) {
     const matched = lineExamLevels(line, titleExamEntries)
     if (matched) matched.forEach(l => levels.add(l))
+  }
+  // Single-SKU orders ("MP ki Geeta — Hindi Medium (Pre-Order)", "MPPSC
+  // Prelims Hindi Medium Book Set") carry no books_ordered breakdown at all —
+  // product_name IS the only signal, and it's a short, deliberately-chosen
+  // checkout label rather than long free-text book content, so a plain
+  // word-boundary keyword match is safe here (unlike scanning book titles,
+  // which is what caused the original false positives).
+  if (levels.size === 0 && order.product_name) {
+    for (const lvl of examOptions) {
+      const re = new RegExp(`\\b${escapeRegex(lvl)}\\b`, 'i')
+      if (re.test(order.product_name)) levels.add(lvl)
+    }
   }
   return levels
 }
@@ -501,7 +523,7 @@ export default function WebsiteOrders() {
         if (dateFrom && d < dateFrom) return false
         if (dateTo && d > dateTo) return false
       }
-      if (examFilter !== 'all' && !orderExamLevels(o, titleExamEntries).has(examFilter)) return false
+      if (examFilter !== 'all' && !orderExamLevels(o, titleExamEntries, examOptions).has(examFilter)) return false
       if (bookFilter !== 'all' && !orderContainsBook(o, bookFilter)) return false
       if (productFilter !== 'all' && o.product_name !== productFilter) return false
       const q = search.trim().toLowerCase()
@@ -521,7 +543,7 @@ export default function WebsiteOrders() {
       if (stageDiff !== 0) return stageDiff
       return new Date(b.order_date || 0) - new Date(a.order_date || 0)
     })
-  }, [orders, search, dateFrom, dateTo, showAll, examFilter, bookFilter, productFilter, titleExamEntries])
+  }, [orders, search, dateFrom, dateTo, showAll, examFilter, bookFilter, productFilter, titleExamEntries, examOptions])
 
   const totalRevenue = filtered.reduce((s, o) => s + (parseFloat(o.amount) || 0), 0)
   const newCount = filtered.filter(o => !o.shipped).length
