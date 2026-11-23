@@ -423,7 +423,8 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
 }
 
 export default function WebsiteOrders() {
-  const { isViewAdmin, isAdmin } = useAuthStore()
+  const { isViewAdmin, isAdmin, isWebsiteSupport } = useAuthStore()
+  const readOnly = isViewAdmin || isWebsiteSupport
   const [orders, setOrders] = useState([])
   const [books, setBooks] = useState([])
   const [loading, setLoading] = useState(true)
@@ -701,7 +702,7 @@ export default function WebsiteOrders() {
                 </div>
               </div>
             </button>
-            {!isViewAdmin && (
+            {!readOnly && (
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setDeleteConfirm(o) }}
@@ -725,7 +726,7 @@ export default function WebsiteOrders() {
         onDeleteRequest={(order) => setDeleteConfirm(order)}
         onEditRequest={(order) => setEditingOrder(order)}
         bookMediumMap={bookMediumMap}
-        readOnly={isViewAdmin}
+        readOnly={readOnly}
         canEdit={isAdmin}
       />
 

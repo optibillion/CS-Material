@@ -27,6 +27,8 @@ export default function Login() {
         navigate('/admin')
       } else if (user.role === 'accountant') {
         navigate('/accountant/allotments')
+      } else if (user.role === 'website_support') {
+        navigate('/website-support')
       } else {
         navigate('/issuer')
       }

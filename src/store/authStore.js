@@ -10,6 +10,7 @@ export const useAuthStore = create(
       isAdmin: false,
       isAccountant: false,
       isViewAdmin: false,
+      isWebsiteSupport: false,
       allotmentAccess: null,
       stockAccess: null,
       priceAccess: null,
@@ -48,6 +49,7 @@ export const useAuthStore = create(
         const isAdmin = safeProfile.role === 'admin'
         const isAccountant = safeProfile.role === 'accountant'
         const isViewAdmin = safeProfile.role === 'view_admin'
+        const isWebsiteSupport = safeProfile.role === 'website_support'
         const fullAccess = isAdmin || isAccountant
         set({
           user: safeProfile,
@@ -55,12 +57,14 @@ export const useAuthStore = create(
           isAdmin,
           isAccountant,
           isViewAdmin,
+          isWebsiteSupport,
           // view_admin sees everything admin sees, but only ever at 'view' level
           allotmentAccess: fullAccess ? 'edit' : (isViewAdmin ? 'view' : (safeProfile.can_allot || null)),
           stockAccess: fullAccess ? 'edit' : (isViewAdmin ? 'view' : (safeProfile.can_stock || null)),
           priceAccess: fullAccess ? 'edit' : (isViewAdmin ? 'view' : (safeProfile.can_price || null)),
-          websiteOrdersAccess: fullAccess || isViewAdmin || !!safeProfile.can_view_website_orders,
-          failedOrdersAccess: fullAccess || isViewAdmin || !!safeProfile.can_view_failed_orders,
+          // website_support exists only to view orders + handle failed-order follow-up
+          websiteOrdersAccess: fullAccess || isViewAdmin || isWebsiteSupport || !!safeProfile.can_view_website_orders,
+          failedOrdersAccess: fullAccess || isViewAdmin || isWebsiteSupport || !!safeProfile.can_view_failed_orders,
           internalAccess: fullAccess || isViewAdmin || !!safeProfile.can_view_internal,
           loginAt: Date.now()
         })
@@ -69,12 +73,12 @@ export const useAuthStore = create(
 
       logout: async () => {
         await supabase.auth.signOut()
-        set({ user: null, profile: null, isAdmin: false, isAccountant: false, isViewAdmin: false, allotmentAccess: null, stockAccess: null, priceAccess: null, loginAt: null })
+        set({ user: null, profile: null, isAdmin: false, isAccountant: false, isViewAdmin: false, isWebsiteSupport: false, allotmentAccess: null, stockAccess: null, priceAccess: null, loginAt: null })
       }
     }),
     {
       name: 'csmdis-auth',
-      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, isViewAdmin: state.isViewAdmin, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, websiteOrdersAccess: state.websiteOrdersAccess, failedOrdersAccess: state.failedOrdersAccess, internalAccess: state.internalAccess, loginAt: state.loginAt })
+      partialize: (state) => ({ user: state.user, profile: state.profile, isAdmin: state.isAdmin, isAccountant: state.isAccountant, isViewAdmin: state.isViewAdmin, isWebsiteSupport: state.isWebsiteSupport, allotmentAccess: state.allotmentAccess, stockAccess: state.stockAccess, priceAccess: state.priceAccess, websiteOrdersAccess: state.websiteOrdersAccess, failedOrdersAccess: state.failedOrdersAccess, internalAccess: state.internalAccess, loginAt: state.loginAt })
     }
   )
 )

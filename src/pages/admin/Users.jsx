@@ -65,6 +65,7 @@ function Modal({ open, onClose, onSave }) {
               <option value="accountant">Accountant</option>
               <option value="admin">Admin</option>
               <option value="view_admin">Admin (View Only)</option>
+              <option value="website_support">Website Support</option>
             </select>
           </div>
         </div>
@@ -256,8 +257,8 @@ async function toggleInternalAccess(user) {
                 <td className="px-5 py-3 text-[#f0a500] text-sm font-mono">{u.username}</td>
                 <td className="px-5 py-3 text-[#9ca3af] text-sm">{u.email || '—'}</td>
                 <td className="px-5 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${u.role === 'admin' ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : u.role === 'view_admin' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : u.role === 'accountant' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' : 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30'}`}>
-                    {u.role === 'view_admin' ? 'view-only admin' : u.role}
+                  <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${u.role === 'admin' ? 'bg-[#bd0a0a]/20 text-red-400 border-[#bd0a0a]/30' : u.role === 'view_admin' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : u.role === 'accountant' ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' : u.role === 'website_support' ? 'bg-teal-500/20 text-teal-400 border-teal-500/30' : 'bg-[#f0a500]/20 text-[#f0a500] border-[#f0a500]/30'}`}>
+                    {u.role === 'view_admin' ? 'view-only admin' : u.role === 'website_support' ? 'website support' : u.role}
                   </span>
                 </td>
                 <td className="px-5 py-3">
@@ -271,6 +272,17 @@ async function toggleInternalAccess(user) {
                     <span className="text-xs px-2 py-0.5 rounded border bg-[#bd0a0a]/20 border-[#bd0a0a]/30 text-red-400 font-medium">Full Access</span>
                   ) : u.role === 'view_admin' ? (
                     <span className="text-xs px-2 py-0.5 rounded border bg-blue-500/20 border-blue-500/30 text-blue-400 font-medium">View Only (everything, no Users/Audit)</span>
+                  ) : u.role === 'website_support' ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[#6b7280] text-xs w-28">Website Orders</span>
+                        <span className="text-xs px-2 py-0.5 rounded border bg-blue-500/20 border-blue-500/40 text-blue-400 font-medium">view</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[#6b7280] text-xs w-28">Failed Orders</span>
+                        <span className="text-xs px-2 py-0.5 rounded border bg-[#bd0a0a]/20 border-[#bd0a0a]/40 text-red-400 font-medium">edit</span>
+                      </div>
+                    </div>
                   ) : u.role === 'accountant' ? (
                     <div className="space-y-1">
                       <div className="flex items-center gap-1.5">

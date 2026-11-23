@@ -9,6 +9,7 @@ import Login from './pages/auth/Login'
 import AdminLayout from './components/AdminLayout'
 import IssuerLayout from './components/IssuerLayout'
 import AccountantLayout from './components/AccountantLayout'
+import WebsiteSupportLayout from './components/WebsiteSupportLayout'
 
 // Admin pages
 import AdminDashboard from './pages/admin/Dashboard'
@@ -47,8 +48,9 @@ import Bags from './pages/shared/Bags'
 import Internal from './pages/shared/Internal'
 
 function ProtectedAdmin({ children }) {
-  const { user, isAdmin, isViewAdmin } = useAuthStore()
+  const { user, isAdmin, isViewAdmin, isWebsiteSupport } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
+  if (isWebsiteSupport) return <Navigate to="/website-support" replace />
   if (!isAdmin && !isViewAdmin) return <Navigate to="/issuer" replace />
   return children
 }
@@ -62,17 +64,26 @@ function ProtectedFullAdmin({ children }) {
 }
 
 function ProtectedIssuer({ children }) {
-  const { user, isAccountant, isViewAdmin } = useAuthStore()
+  const { user, isAccountant, isViewAdmin, isWebsiteSupport } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
   if (isViewAdmin) return <Navigate to="/admin" replace />
   if (isAccountant) return <Navigate to="/accountant" replace />
+  if (isWebsiteSupport) return <Navigate to="/website-support" replace />
   return children
 }
 
 function ProtectedAccountant({ children }) {
-  const { user, isAccountant } = useAuthStore()
+  const { user, isAccountant, isWebsiteSupport } = useAuthStore()
   if (!user) return <Navigate to="/login" replace />
+  if (isWebsiteSupport) return <Navigate to="/website-support" replace />
   if (!isAccountant) return <Navigate to="/issuer" replace />
+  return children
+}
+
+function ProtectedWebsiteSupport({ children }) {
+  const { user, isWebsiteSupport } = useAuthStore()
+  if (!user) return <Navigate to="/login" replace />
+  if (!isWebsiteSupport) return <Navigate to="/issuer" replace />
   return children
 }
 
@@ -161,6 +172,13 @@ export default function App() {
           <Route path="inventory" element={<AdminInventory />} />
           <Route path="sales" element={<AccountantSalesView />} />
           <Route path="books" element={<BookPrices />} />
+        </Route>
+
+        {/* Website Support routes */}
+        <Route path="/website-support" element={<ProtectedWebsiteSupport><WebsiteSupportLayout /></ProtectedWebsiteSupport>}>
+          <Route index element={<Navigate to="website-orders" replace />} />
+          <Route path="website-orders" element={<AdminWebsiteOrders />} />
+          <Route path="website-failed-orders" element={<AdminWebsiteFailedOrders />} />
         </Route>
       </Routes>
     </BrowserRouter>
