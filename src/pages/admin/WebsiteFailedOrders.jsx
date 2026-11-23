@@ -11,12 +11,17 @@ function safeFormat(dateStr, fmt) {
   return isNaN(d.getTime()) ? '—' : format(d, fmt)
 }
 
+const STATUS_META = {
+  Purchased: { label: 'Purchased', cls: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+  Contacted: { label: 'Contacted', cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  New: { label: 'New', cls: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+}
+
+function statusRank(status) { return status === 'New' || !status ? 0 : 1 }
+
 function StatusBadge({ status }) {
-  const contacted = status === 'Contacted'
-  const cls = contacted
-    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-    : 'bg-orange-500/20 text-orange-400 border-orange-500/30'
-  return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${cls}`}>{contacted ? 'Contacted' : 'New'}</span>
+  const meta = STATUS_META[status] || STATUS_META.New
+  return <span className={`text-xs px-2 py-0.5 rounded-full border font-medium whitespace-nowrap ${meta.cls}`}>{meta.label}</span>
 }
 
 function Section({ icon: Icon, label, children }) {
@@ -41,10 +46,20 @@ function Field({ label, value }) {
   )
 }
 
-function LeadDetailModal({ lead, onClose, onToggleContacted, readOnly }) {
+function LeadDetailModal({ lead, onClose, onSetStatus, onSaveRemark, readOnly }) {
+  const [remark, setRemark] = useState('')
+  const [savingRemark, setSavingRemark] = useState(false)
+
+  useEffect(() => { setRemark(lead?.remark || '') }, [lead?.id])
+
   if (!lead) return null
-  const contacted = lead.status === 'Contacted'
   const address = [lead.house, lead.locality, lead.city, lead.district, lead.state, lead.pincode].filter(Boolean).join(', ')
+
+  async function handleSaveRemark() {
+    setSavingRemark(true)
+    await onSaveRemark(lead, remark)
+    setSavingRemark(false)
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={onClose}>
@@ -69,18 +84,47 @@ function LeadDetailModal({ lead, onClose, onToggleContacted, readOnly }) {
         <div className="px-6 py-5 overflow-y-auto space-y-0">
           <Section icon={PhoneCall} label="Follow-up">
             {readOnly ? (
-              <div className="flex items-center gap-2 text-sm">
-                {contacted ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
-                <span className={contacted ? 'text-white font-medium' : 'text-[#9ca3af]'}>Contacted</span>
-                {contacted && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
+              <div className="space-y-2">
+                {['Contacted', 'Purchased'].map(s => {
+                  const active = lead.status === s
+                  return (
+                    <div key={s} className="flex items-center gap-2 text-sm">
+                      {active ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                      <span className={active ? 'text-white font-medium' : 'text-[#9ca3af]'}>{s}</span>
+                      {active && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
+                    </div>
+                  )
+                })}
+                {lead.remark && (
+                  <p className="text-[#9ca3af] text-xs bg-[#12121f] border border-[#2a2a45] rounded-lg p-2 mt-2">{lead.remark}</p>
+                )}
               </div>
             ) : (
-              <button onClick={() => onToggleContacted(lead)}
-                className="flex items-center gap-2 text-sm transition-colors">
-                {contacted ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
-                <span className={contacted ? 'text-white font-medium' : 'text-[#9ca3af]'}>Contacted</span>
-                {contacted && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
-              </button>
+              <div className="space-y-3">
+                <div className="flex items-center gap-4">
+                  {['Contacted', 'Purchased'].map(s => {
+                    const active = lead.status === s
+                    return (
+                      <button key={s} onClick={() => onSetStatus(lead, active ? 'New' : s)}
+                        className="flex items-center gap-2 text-sm transition-colors">
+                        {active ? <CheckSquare size={16} className="text-emerald-400 flex-shrink-0" /> : <Square size={16} className="text-[#9ca3af] flex-shrink-0" />}
+                        <span className={active ? 'text-white font-medium' : 'text-[#9ca3af]'}>{s}</span>
+                      </button>
+                    )
+                  })}
+                  {lead.status !== 'New' && lead.contacted_at && <span className="text-[#4b5563] text-xs">· {safeFormat(lead.contacted_at, 'dd MMM yyyy, hh:mm a')}</span>}
+                </div>
+                <div>
+                  <textarea value={remark} onChange={e => setRemark(e.target.value)} placeholder="Remark (optional)" rows={2}
+                    className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563] resize-none" />
+                  {remark !== (lead.remark || '') && (
+                    <button onClick={handleSaveRemark} disabled={savingRemark}
+                      className="mt-1.5 text-xs px-3 py-1.5 rounded-lg bg-[#2a2a45] hover:bg-[#3a3a55] text-white font-medium transition-all disabled:opacity-50">
+                      {savingRemark ? 'Saving...' : 'Save Remark'}
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </Section>
 
@@ -147,13 +191,20 @@ export default function WebsiteFailedOrders() {
     setSelectedLead(prev => prev && prev.id === id ? { ...prev, ...patch } : prev)
   }
 
-  async function handleToggleContacted(lead) {
-    const contacted = lead.status !== 'Contacted'
-    const patch = { status: contacted ? 'Contacted' : 'New', contacted_at: contacted ? new Date().toISOString() : null }
+  async function handleSetStatus(lead, status) {
+    const patch = { status, contacted_at: status !== 'New' ? new Date().toISOString() : null }
     const { error } = await supabase.from('website_failed_orders').update(patch).eq('id', lead.id)
     if (error) { toast.error('Failed to save — has add_website_failed_orders.sql been run in Supabase?'); return }
     applyUpdate(lead.id, patch)
-    toast.success(contacted ? 'Marked as contacted' : 'Contacted unmarked')
+    toast.success(status === 'New' ? `${lead.status} unmarked` : `Marked as ${status.toLowerCase()}`)
+  }
+
+  async function handleSaveRemark(lead, remark) {
+    const patch = { remark: remark.trim() || null }
+    const { error } = await supabase.from('website_failed_orders').update(patch).eq('id', lead.id)
+    if (error) { toast.error('Failed to save remark — has add_website_failed_orders_remark.sql been run in Supabase?'); return }
+    applyUpdate(lead.id, patch)
+    toast.success('Remark saved')
   }
 
   const filtered = useMemo(() => {
@@ -171,12 +222,13 @@ export default function WebsiteFailedOrders() {
       )
     })
     return [...list].sort((a, b) => {
-      if (a.status !== b.status) return a.status === 'New' ? -1 : 1
+      const rankDiff = statusRank(a.status) - statusRank(b.status)
+      if (rankDiff !== 0) return rankDiff
       return new Date(b.attempt_date || 0) - new Date(a.attempt_date || 0)
     })
   }, [leads, search, statusFilter])
 
-  const newCount = leads.filter(l => l.status !== 'Contacted').length
+  const newCount = leads.filter(l => statusRank(l.status) === 0).length
 
   return (
     <div className="p-4 md:p-6 space-y-5">
@@ -188,7 +240,7 @@ export default function WebsiteFailedOrders() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {['all', 'New', 'Contacted'].map(f => (
+        {['all', 'New', 'Contacted', 'Purchased'].map(f => (
           <button key={f} onClick={() => setStatusFilter(f)}
             className={`text-xs px-3 py-2 rounded-lg border font-medium transition-all capitalize ${statusFilter === f ? 'bg-[#bd0a0a] border-[#bd0a0a] text-white' : 'bg-[#2a2a45] border-[#2a2a45] text-[#9ca3af] hover:text-white'}`}>
             {f === 'all' ? 'All' : f}
@@ -202,7 +254,7 @@ export default function WebsiteFailedOrders() {
           <p className="text-white text-2xl font-bold mt-0.5">{leads.length}</p>
         </div>
         <div className="bg-[#1a1a2e] border border-[#2a2a45] rounded-xl p-4">
-          <p className="text-[#6b7280] text-xs">Not Yet Contacted</p>
+          <p className="text-[#6b7280] text-xs">Pending</p>
           <p className="text-orange-400 text-2xl font-bold mt-0.5">{newCount}</p>
         </div>
       </div>
@@ -252,7 +304,8 @@ export default function WebsiteFailedOrders() {
       <LeadDetailModal
         lead={selectedLead}
         onClose={() => setSelectedLead(null)}
-        onToggleContacted={handleToggleContacted}
+        onSetStatus={handleSetStatus}
+        onSaveRemark={handleSaveRemark}
         readOnly={isViewAdmin}
       />
     </div>
