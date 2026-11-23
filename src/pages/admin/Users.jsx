@@ -48,7 +48,7 @@ function Modal({ open, onClose, onSave }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[#9ca3af] text-sm mb-1.5 block">Username *</label>
-              <input value={form.username} onChange={e => set('username', e.target.value)} placeholder="username"
+              <input value={form.username} onChange={e => set('username', e.target.value.toLowerCase())} placeholder="username"
                 className="w-full bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
             </div>
             <div>
