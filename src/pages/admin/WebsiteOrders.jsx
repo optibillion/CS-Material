@@ -243,11 +243,12 @@ function OrderEditModal({ order, onClose, onSave }) {
   )
 }
 
-function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, onEditRequest, readOnly, canEdit, bookMediumMap }) {
+function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDeleteRequest, onEditRequest, onUpdateAwb, readOnly, canEdit, bookMediumMap }) {
   const [awbInput, setAwbInput] = useState('')
   const [showAwbInput, setShowAwbInput] = useState(false)
+  const [editingAwb, setEditingAwb] = useState(false)
 
-  useEffect(() => { setAwbInput(''); setShowAwbInput(false) }, [order?.id])
+  useEffect(() => { setAwbInput(''); setShowAwbInput(false); setEditingAwb(false) }, [order?.id])
 
   if (!order) return null
 
@@ -284,7 +285,29 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
                   <CheckSquare size={16} className="text-emerald-400 flex-shrink-0 mt-0.5" />
                   <div className="flex-1 min-w-0">
                     <p className="text-white text-sm font-medium">Shipped</p>
-                    <p className="text-[#6b7280] text-xs mt-0.5 break-all">AWB / Tracking: <span className="text-[#9ca3af] font-mono">{order.shipped_awb || '—'}</span></p>
+                    {editingAwb ? (
+                      <div className="flex gap-2 mt-1.5">
+                        <input value={awbInput} onChange={e => setAwbInput(e.target.value)} placeholder="AWB number or tracking link" autoFocus
+                          onKeyDown={e => { if (e.key === 'Enter') { onUpdateAwb(order, awbInput); setEditingAwb(false) } if (e.key === 'Escape') setEditingAwb(false) }}
+                          className="flex-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+                        <button onClick={() => { onUpdateAwb(order, awbInput); setEditingAwb(false) }}
+                          className="px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white text-xs font-semibold transition-all">
+                          Save
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[#6b7280] text-xs mt-0.5 break-all">
+                        AWB / Tracking: <span className="text-[#9ca3af] font-mono">{order.shipped_awb || '—'}</span>
+                        {!readOnly && (
+                          <>
+                            {' · '}
+                            <button onClick={() => { setAwbInput(order.shipped_awb || ''); setEditingAwb(true) }} className="text-[#6b7280] hover:text-white underline">
+                              {order.shipped_awb ? 'Edit' : 'Add AWB'}
+                            </button>
+                          </>
+                        )}
+                      </p>
+                    )}
                     <p className="text-[#4b5563] text-xs mt-0.5">
                       {safeFormat(order.shipped_at, 'dd MMM yyyy, hh:mm a')}
                       {!readOnly && (
@@ -305,14 +328,17 @@ function OrderDetailModal({ order, onClose, onShip, onUnship, onDeliver, onDelet
                     <Square size={16} /> Mark as Shipped
                   </button>
                   {showAwbInput && (
-                    <div className="flex gap-2 mt-2 ml-6">
-                      <input value={awbInput} onChange={e => setAwbInput(e.target.value)} placeholder="AWB number or tracking link" autoFocus
-                        onKeyDown={e => { if (e.key === 'Enter') onShip(order, awbInput) }}
-                        className="flex-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
-                      <button onClick={() => onShip(order, awbInput)}
-                        className="px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white text-xs font-semibold transition-all">
-                        Confirm
-                      </button>
+                    <div className="ml-6 mt-2">
+                      <div className="flex gap-2">
+                        <input value={awbInput} onChange={e => setAwbInput(e.target.value)} placeholder="AWB number or tracking link (optional)" autoFocus
+                          onKeyDown={e => { if (e.key === 'Enter') onShip(order, awbInput) }}
+                          className="flex-1 bg-[#12121f] border border-[#2a2a45] rounded-lg px-3 py-1.5 text-white text-xs focus:outline-none focus:border-[#bd0a0a] placeholder-[#4b5563]" />
+                        <button onClick={() => onShip(order, awbInput)}
+                          className="px-3 py-1.5 rounded-lg bg-[#bd0a0a] hover:bg-[#a00909] text-white text-xs font-semibold transition-all">
+                          Confirm
+                        </button>
+                      </div>
+                      <p className="text-[#4b5563] text-xs mt-1">AWB isn't required to ship — add it now or later, whenever you have it.</p>
                     </div>
                   )}
                 </div>
@@ -443,12 +469,22 @@ export default function WebsiteOrders() {
   }
 
   async function handleShip(order, awb) {
-    if (!awb.trim()) { toast.error('Enter an AWB number or tracking link'); return }
-    const patch = { shipped: true, shipped_awb: awb.trim(), shipped_at: new Date().toISOString() }
+    // AWB is optional at ship time — it often isn't known yet (courier
+    // hasn't generated it, or it's a walk-in handoff) — and can always be
+    // added or changed later via handleUpdateAwb, any time, shipped or not.
+    const patch = { shipped: true, shipped_awb: awb.trim() || null, shipped_at: new Date().toISOString() }
     const { error } = await supabase.from('website_orders').update(patch).eq('id', order.id)
     if (error) { toast.error('Failed to save — has add_website_orders_fulfillment.sql been run in Supabase?'); return }
     applyUpdate(order.id, patch)
     toast.success('Marked as shipped')
+  }
+
+  async function handleUpdateAwb(order, awb) {
+    const patch = { shipped_awb: awb.trim() || null }
+    const { error } = await supabase.from('website_orders').update(patch).eq('id', order.id)
+    if (error) { toast.error('Failed to save AWB'); return }
+    applyUpdate(order.id, patch)
+    toast.success(patch.shipped_awb ? 'AWB saved' : 'AWB cleared')
   }
 
   async function handleUnship(order) {
@@ -684,6 +720,7 @@ export default function WebsiteOrders() {
         onClose={() => setSelectedOrder(null)}
         onShip={handleShip}
         onUnship={handleUnship}
+        onUpdateAwb={handleUpdateAwb}
         onDeliver={handleDeliver}
         onDeleteRequest={(order) => setDeleteConfirm(order)}
         onEditRequest={(order) => setEditingOrder(order)}
